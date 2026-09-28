@@ -1,125 +1,58 @@
+// Das Dashboard wird vom SolarFlow-Server selbst ausgeliefert - gleiche Adresse
 export class ApiClient {
-    constructor() {
-        this.baseUrl = localStorage.getItem('apiUrl') || window.location.origin;
-        this.timeout = 5000;
-    }
-
-    setBaseUrl(url) {
-        this.baseUrl = url;
-
-        // Nur echte Abweichungen merken, damit die App nach einem Serverwechsel nicht hängt
-        if (url === window.location.origin) {
-            localStorage.removeItem('apiUrl');
-        } else {
-            localStorage.setItem('apiUrl', url);
-        }
-    }
-
-    async dropUnreachableOverride() {
-        const stored = localStorage.getItem('apiUrl');
-        if (!stored || stored === window.location.origin) return;
-
+    async request(endpoint, { method = 'GET', body, timeout = 8000 } = {}) {
+        let response;
         try {
-            await fetch(`${stored}/api/status`, { signal: AbortSignal.timeout(3000) });
-        } catch {
-            console.warn(`Gespeicherte Server URL ${stored} nicht erreichbar - nutze ${window.location.origin}`);
-            this.setBaseUrl(window.location.origin);
-        }
-    }
-
-    async request(endpoint, options = {}) {
-        const { timeout = this.timeout, ...fetchOptions } = options;
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), timeout);
-
-        try {
-            const response = await fetch(`${this.baseUrl}${endpoint}`, {
-                ...fetchOptions,
-                signal: controller.signal,
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...fetchOptions.headers
-                }
+            response = await fetch(endpoint, {
+                method,
+                headers: body ? { 'Content-Type': 'application/json' } : undefined,
+                body: body ? JSON.stringify(body) : undefined,
+                signal: AbortSignal.timeout(timeout)
             });
-
-            if (!response.ok) {
-                throw new Error(await this.readError(response));
-            }
-
-            return await response.json();
         } catch (error) {
-            if (error.name === 'AbortError') {
-                throw new Error('Zeitüberschreitung bei der Serveranfrage');
-            }
-            console.error(`API Error (${endpoint}):`, error);
+            throw new Error(error.name === 'TimeoutError'
+                ? 'Zeitüberschreitung bei der Serveranfrage'
+                : 'SolarFlow-Server nicht erreichbar');
+        }
+
+        const data = await response.json().catch(() => null);
+        if (!response.ok) {
+            const error = new Error(this.errorText(data, response));
+            error.status = response.status;
             throw error;
-        } finally {
-            clearTimeout(timeoutId);
         }
+        return data;
     }
 
-    async readError(response) {
-        try {
-            const body = await response.json();
-            if (typeof body.detail === 'string') return body.detail;
-            if (Array.isArray(body.detail)) return body.detail.map(d => d.msg).join(', ');
-        } catch {
-            // Kein JSON-Body - Statuszeile reicht
-        }
-        return `HTTP ${response.status}: ${response.statusText}`;
+    errorText(data, response) {
+        const detail = data?.detail;
+        if (typeof detail === 'string') return detail;
+        if (Array.isArray(detail)) return detail.map(d => d.msg.replace(/^Value error, /, '')).join(', ');
+        return `HTTP ${response.status}`;
     }
 
-    async getCurrentData() {
-        return this.request('/api/current');
+    status() { return this.request('/api/status'); }
+    current() { return this.request('/api/current'); }
+    stats(period = 'day', ref = null) {
+        return this.request(`/api/stats?period=${period}${ref ? `&ref=${ref}` : ''}`);
     }
-
-    async getStats() {
-        return this.request('/api/stats');
+    devices() { return this.request('/api/devices'); }
+    events(limit = 30) { return this.request(`/api/devices/events?limit=${limit}`); }
+    hue() { return this.request('/api/hue'); }
+    settings() { return this.request('/api/settings'); }
+    saveSettings(settings) {
+        // Ein Wechsel der Hue-Bridge kann einen Moment dauern
+        return this.request('/api/settings', { method: 'PUT', body: settings, timeout: 20000 });
     }
-
-    async getDevices() {
-        return this.request('/api/devices');
+    createDevice(device) { return this.request('/api/devices', { method: 'POST', body: device }); }
+    updateDevice(name, device) {
+        return this.request(`/api/devices/${encodeURIComponent(name)}`, { method: 'PUT', body: device });
     }
-
-    async getHueConfig() {
-        return this.request('/api/hue');
+    deleteDevice(name) { return this.request(`/api/devices/${encodeURIComponent(name)}`, { method: 'DELETE' }); }
+    switchDevice(name, on) {
+        return this.request(`/api/devices/${encodeURIComponent(name)}/switch`, { method: 'POST', body: { on } });
     }
-
-    async getSettings() {
-        return this.request('/api/settings');
-    }
-
-    async updateSettings(settings) {
-        // Längerer Timeout: ein Wechsel der Hue-Bridge braucht einen Verbindungsaufbau
-        return this.request('/api/settings', {
-            method: 'PUT',
-            body: JSON.stringify(settings),
-            timeout: 20000
-        });
-    }
-
-    async createDevice(device) {
-        return this.request('/api/devices', {
-            method: 'POST',
-            body: JSON.stringify(device)
-        });
-    }
-
-    async deleteDevice(deviceName) {
-        return this.request(`/api/devices/${encodeURIComponent(deviceName)}`, {
-            method: 'DELETE'
-        });
-    }
-
-    async toggleDevice(deviceName) {
-        return this.request(`/api/devices/${encodeURIComponent(deviceName)}/toggle`, {
-            method: 'POST'
-        });
-    }
-
-    async releaseManual(deviceName) {
-        return this.request(`/api/devices/${encodeURIComponent(deviceName)}/manual`, {
-            method: 'DELETE'
-        });
+    releaseManual(name) {
+        return this.request(`/api/devices/${encodeURIComponent(name)}/manual`, { method: 'DELETE' });
     }
 }

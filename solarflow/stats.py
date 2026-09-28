@@ -84,7 +84,8 @@ def resolve_period(kind: str, ref: date, today: date, first: Optional[date]) -> 
 
 
 def _bucket_starts(period: Period) -> List[datetime]:
-    starts, cursor = [], period.start
+    # "Gesamt" beginnt am ersten Messtag, die erste Spalte trotzdem am Monats-/Jahresanfang
+    starts, cursor = [], _bucket_key(period, period.start)
     while cursor < period.end:
         starts.append(cursor)
         if period.bucket == "hour":

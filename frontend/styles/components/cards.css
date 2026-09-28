@@ -365,36 +365,49 @@
 
 /* Cost Summary Card */
 .cost-summary-card {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    border-radius: var(--radius-xl);
-    padding: var(--spacing-2xl);
-    box-shadow: var(--shadow-xl);
-    margin-top: var(--spacing-2xl);
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-xl);
 }
 
 .cost-summary-card h3 {
-    margin-bottom: var(--spacing-lg);
-    color: white;
+    margin-bottom: var(--spacing-md);
+    color: var(--color-text-primary);
     font-size: var(--font-size-xl);
 }
 
 .cost-row {
     display: flex;
     justify-content: space-between;
-    padding: var(--spacing-md) 0;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-    font-size: var(--font-size-lg);
+    gap: var(--spacing-md);
+    padding: var(--spacing-sm) 0;
+    border-bottom: 1px solid var(--color-border);
+    color: var(--color-text-secondary);
+    font-variant-numeric: tabular-nums;
 }
 
-.cost-row:last-child {
-    border-bottom: none;
+.cost-row span:last-child {
+    color: var(--color-text-primary);
+    font-weight: 600;
 }
 
 .cost-row.total {
-    font-weight: bold;
-    font-size: var(--font-size-xl);
-    padding-top: var(--spacing-lg);
+    border-bottom: none;
+    padding-top: var(--spacing-md);
+    font-size: var(--font-size-lg);
+    color: var(--color-text-primary);
+    font-weight: 700;
+}
+
+.cost-row.total span:last-child {
+    color: var(--color-accent-green);
+}
+
+.cost-note {
+    margin-top: var(--spacing-sm);
+    font-size: var(--font-size-xs);
+    color: var(--color-text-muted);
 }
 
 /* Settings Cards */

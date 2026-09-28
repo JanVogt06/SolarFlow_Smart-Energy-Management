@@ -20,6 +20,8 @@
 
 /* Features - Page specific */
 @import './features/energy-flow.css';
+@import './features/charts.css';
+@import './features/statistics.css';
 
 /* Utilities - Helpers */
 @import './utilities/animations.css';

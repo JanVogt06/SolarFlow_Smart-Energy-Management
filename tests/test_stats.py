@@ -152,3 +152,14 @@ def test_device_usage_clips_to_the_period():
     assert usage["runtime_hours"] == pytest.approx(2.0)
     assert usage["energy"] == pytest.approx(4.0)
     assert usage["switches"] == 2
+
+
+def test_all_time_series_includes_the_first_partial_month(config, db):
+    fill(db, datetime(2025, 11, 18, 12), 60, pv=1000, load=500)
+    fill(db, datetime(2025, 12, 5, 12), 60, pv=2000, load=500)
+
+    stats = build_statistics(db, config, "all", now=datetime(2026, 1, 10))
+
+    assert [s["label"] for s in stats["series"]] == ["Nov 25", "Dez 25", "Jan 26"]
+    assert [s["pv"] for s in stats["series"]] == pytest.approx([1.0, 2.0, 0.0])
+    assert sum(s["pv"] for s in stats["series"]) == pytest.approx(stats["energy"]["pv"])

@@ -3,24 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="SolarFlow Dashboard - Real-time monitoring and control of your solar energy system">
-
-    <title>SolarFlow Dashboard - Smart Energy Management</title>
+    <meta name="description" content="SolarFlow Dashboard - Solarüberschuss und Hue-Geräte im Blick">
+    <title>SolarFlow Dashboard</title>
 
     <link rel="stylesheet" href="styles/main.css">
     <link rel="icon" href="assets/icon.png">
     <link rel="apple-touch-icon" href="assets/icon.png">
 
-    <!-- Scripts -->
     <script src="scripts/lucide.js"></script>
     <script type="module" src="scripts/main.js"></script>
 </head>
 <body>
-    <!-- Navigation -->
     <nav class="navbar">
         <div class="container">
             <div class="nav-brand">
-                <img src="assets/icon.png" alt="SolarFlow Logo" class="nav-logo">
+                <img src="assets/icon.png" alt="" class="nav-logo">
                 <span>SolarFlow Energy Manager</span>
             </div>
             <div class="nav-status">
@@ -33,216 +30,229 @@
         </div>
     </nav>
 
-    <!-- Tab Navigation -->
     <div class="tab-navigation">
         <div class="container">
             <div class="nav-tabs">
                 <button class="nav-tab active" data-tab="overview">
-                    <i data-lucide="home"></i>
-                    <span>Übersicht</span>
+                    <i data-lucide="home"></i><span>Übersicht</span>
                 </button>
                 <button class="nav-tab" data-tab="devices">
-                    <i data-lucide="cpu"></i>
-                    <span>Geräte</span>
+                    <i data-lucide="cpu"></i><span>Geräte</span>
                 </button>
                 <button class="nav-tab" data-tab="statistics">
-                    <i data-lucide="bar-chart-3"></i>
-                    <span>Statistik</span>
+                    <i data-lucide="bar-chart-3"></i><span>Statistik</span>
                 </button>
                 <button class="nav-tab" data-tab="settings">
-                    <i data-lucide="settings"></i>
-                    <span>Einstellungen</span>
+                    <i data-lucide="settings"></i><span>Einstellungen</span>
                 </button>
             </div>
         </div>
     </div>
 
-    <!-- Main Content -->
     <main class="main-content">
         <div class="container">
+            <div class="banner" id="status-banner" hidden>
+                <i data-lucide="alert-triangle"></i>
+                <span id="status-banner-text"></span>
+            </div>
 
-            <!-- Overview Tab -->
+            <!-- Übersicht -->
             <div class="tab-content active" id="overview-tab">
-                <!-- Energy Flow Visualization -->
                 <section class="energy-flow-section">
                     <div class="energy-flow-container">
                         <div class="flow-card solar">
-                            <div class="flow-icon">
-                                <i data-lucide="sun"></i>
-                            </div>
+                            <div class="flow-icon"><i data-lucide="sun"></i></div>
                             <div class="flow-label">PV-Erzeugung</div>
                             <div class="flow-value" id="pv-power">-- W</div>
                         </div>
-
                         <div class="flow-center">
-                            <div class="house-icon">
-                                <i data-lucide="home"></i>
-                            </div>
+                            <div class="house-icon"><i data-lucide="home"></i></div>
                             <div class="flow-label">Verbrauch</div>
                             <div class="flow-value" id="load-power">-- W</div>
                         </div>
-
                         <div class="flow-card grid" id="grid-card">
-                            <div class="flow-icon">
-                                <i data-lucide="zap"></i>
-                            </div>
+                            <div class="flow-icon"><i data-lucide="zap"></i></div>
                             <div class="flow-label" id="grid-label">Netz</div>
                             <div class="flow-value" id="grid-power">-- W</div>
                         </div>
-
                         <div class="flow-card battery" id="battery-card">
-                            <div class="flow-icon">
-                                <i data-lucide="battery"></i>
-                            </div>
-                            <div class="flow-label">Batterie</div>
+                            <div class="flow-icon"><i data-lucide="battery"></i></div>
+                            <div class="flow-label" id="battery-label">Batterie</div>
                             <div class="flow-value" id="battery-soc">--%</div>
                         </div>
                     </div>
                 </section>
 
-                <!-- Metrics Grid -->
                 <section class="metrics-section">
                     <div class="metrics-grid">
                         <div class="metric-card">
                             <div class="metric-header">
                                 <i data-lucide="refresh-cw" class="metric-icon"></i>
-                                <span class="metric-label">Autarkie</span>
+                                <span class="metric-label">Autarkie jetzt</span>
                             </div>
                             <div class="metric-value" id="autarky-rate">--%</div>
+                            <div class="metric-subtext">heute: <span id="autarky-today">--</span></div>
                         </div>
-
-                        <div class="metric-card">
-                            <div class="metric-header">
-                                <i data-lucide="piggy-bank" class="metric-icon"></i>
-                                <span class="metric-label">Ersparnis heute</span>
-                            </div>
-                            <div class="metric-value" id="cost-saved">--€</div>
-                            <div class="metric-subtext" id="total-benefit">Gesamt: --€</div>
-                        </div>
-
                         <div class="metric-card">
                             <div class="metric-header">
                                 <i data-lucide="trending-up" class="metric-icon"></i>
                                 <span class="metric-label">Überschuss</span>
                             </div>
                             <div class="metric-value" id="surplus-power">-- W</div>
-                            <div class="metric-subtext" id="surplus-status">--</div>
+                            <div class="metric-subtext" id="devices-running">--</div>
                         </div>
-
                         <div class="metric-card">
                             <div class="metric-header">
                                 <i data-lucide="activity" class="metric-icon"></i>
-                                <span class="metric-label">Tagesenergie</span>
+                                <span class="metric-label">Erzeugt heute</span>
                             </div>
                             <div class="metric-value" id="daily-energy">-- kWh</div>
-                            <div class="metric-subtext">
-                                Einspeisung: <span id="feed-in-energy">-- kWh</span>
+                            <div class="metric-subtext">Einspeisung: <span id="feed-in-energy">-- kWh</span></div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-header">
+                                <i data-lucide="piggy-bank" class="metric-icon"></i>
+                                <span class="metric-label">Ersparnis heute</span>
                             </div>
+                            <div class="metric-value" id="benefit-today">-- €</div>
+                            <div class="metric-subtext">gesamt: <span id="benefit-total">-- €</span></div>
                         </div>
                     </div>
                 </section>
+
+                <section class="chart-card">
+                    <div class="chart-header">
+                        <div>
+                            <h3>Heute</h3>
+                            <p class="chart-subtitle">Erzeugung und Verbrauch je Stunde in kWh</p>
+                        </div>
+                        <div class="chart-legend" id="today-legend"></div>
+                    </div>
+                    <div class="chart" id="today-chart"></div>
+                </section>
             </div>
 
-            <!-- Devices Tab -->
+            <!-- Geräte -->
             <div class="tab-content" id="devices-tab">
                 <section class="devices-section">
                     <div class="section-header">
                         <div class="section-header-left">
-                            <h2 class="section-title">Intelligente Gerätesteuerung</h2>
+                            <h2 class="section-title">Gerätesteuerung</h2>
                             <div class="devices-summary">
-                                <span>Aktive Geräte: <strong id="active-devices">0</strong></span>
-                                <span>Gesamtverbrauch: <strong id="total-consumption">0 W</strong></span>
+                                <span id="hue-status" class="hue-status">Hue: --</span>
+                                <span>Aktiv: <strong id="active-devices">0</strong></span>
+                                <span>Verbrauch: <strong id="total-consumption">0 W</strong></span>
                             </div>
                         </div>
                         <button class="btn btn-primary" id="add-device-btn">
-                            <i data-lucide="plus"></i>
-                            Gerät hinzufügen
+                            <i data-lucide="plus"></i> Gerät hinzufügen
                         </button>
                     </div>
 
-                    <div class="devices-grid" id="devices-grid">
-                        <!-- Will be populated dynamically -->
-                    </div>
+                    <div class="devices-grid" id="devices-grid"></div>
 
-                    <div class="info-box">
-                        <i data-lucide="info"></i>
-                        <p>Geräte werden automatisch basierend auf dem verfügbaren Überschuss gesteuert.</p>
+                    <div class="events-card">
+                        <h3>Letzte Schaltvorgänge</h3>
+                        <ul class="event-list" id="event-list"></ul>
                     </div>
                 </section>
             </div>
 
-            <!-- Statistics Tab -->
+            <!-- Statistik -->
             <div class="tab-content" id="statistics-tab">
                 <section class="statistics-section">
-                    <div class="stats-grid">
-                        <div class="stat-card">
-                            <div class="stat-label">PV-Produktion</div>
-                            <div class="stat-value" id="stat-pv-energy">-- kWh</div>
+                    <div class="period-bar">
+                        <div class="segmented" id="period-select" role="tablist">
+                            <button data-period="day" class="active">Tag</button>
+                            <button data-period="week">Woche</button>
+                            <button data-period="month">Monat</button>
+                            <button data-period="year">Jahr</button>
+                            <button data-period="all">Gesamt</button>
                         </div>
-                        <div class="stat-card">
-                            <div class="stat-label">Verbrauch</div>
-                            <div class="stat-value" id="stat-consumption">-- kWh</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-label">Eigenverbrauch</div>
-                            <div class="stat-value" id="stat-self-consumption">-- kWh</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-label">Netzbezug</div>
-                            <div class="stat-value" id="stat-grid-energy">-- kWh</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-label">Einspeisung</div>
-                            <div class="stat-value" id="stat-feed-in">-- kWh</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-label">Ø Autarkie</div>
-                            <div class="stat-value" id="stat-autarky-avg">-- %</div>
+                        <div class="period-nav">
+                            <button class="btn-icon" id="period-prev" title="Vorheriger Zeitraum">
+                                <i data-lucide="chevron-left"></i>
+                            </button>
+                            <span class="period-label" id="period-label">--</span>
+                            <button class="btn-icon" id="period-next" title="Nächster Zeitraum">
+                                <i data-lucide="chevron-right"></i>
+                            </button>
                         </div>
                     </div>
 
-                    <div class="cost-summary-card">
-                        <h3>Kostenübersicht</h3>
-                        <div class="cost-row">
-                            <span>Eingesparte Kosten:</span>
-                            <span id="stat-cost-saved">-- €</span>
+                    <div class="stats-grid">
+                        <div class="stat-card"><div class="stat-label">PV-Erzeugung</div><div class="stat-value" id="stat-pv">--</div></div>
+                        <div class="stat-card"><div class="stat-label">Verbrauch</div><div class="stat-value" id="stat-load">--</div></div>
+                        <div class="stat-card"><div class="stat-label">Selbst gedeckt</div><div class="stat-value" id="stat-self">--</div></div>
+                        <div class="stat-card"><div class="stat-label">Netzbezug</div><div class="stat-value" id="stat-grid">--</div></div>
+                        <div class="stat-card"><div class="stat-label">Einspeisung</div><div class="stat-value" id="stat-feed-in">--</div></div>
+                        <div class="stat-card"><div class="stat-label">Autarkie</div><div class="stat-value" id="stat-autarky">--</div></div>
+                        <div class="stat-card"><div class="stat-label">Eigenverbrauchsquote</div><div class="stat-value" id="stat-self-rate">--</div></div>
+                        <div class="stat-card"><div class="stat-label">Spitzenleistung PV</div><div class="stat-value" id="stat-pv-max">--</div></div>
+                    </div>
+
+                    <section class="chart-card">
+                        <div class="chart-header">
+                            <div>
+                                <h3>Erzeugung und Verbrauch</h3>
+                                <p class="chart-subtitle" id="energy-chart-subtitle">in kWh</p>
+                            </div>
+                            <div class="chart-legend" id="energy-legend"></div>
                         </div>
-                        <div class="cost-row total">
-                            <span>Gesamtnutzen:</span>
-                            <span id="stat-total-benefit">-- €</span>
+                        <div class="chart" id="energy-chart"></div>
+                    </section>
+
+                    <div class="stats-columns">
+                        <div class="cost-summary-card">
+                            <h3>Kosten</h3>
+                            <div class="cost-row"><span>Stromkosten ohne PV</span><span id="cost-without">--</span></div>
+                            <div class="cost-row"><span>Tatsächliche Netzkosten</span><span id="cost-grid">--</span></div>
+                            <div class="cost-row"><span>Eingespart</span><span id="cost-saved">--</span></div>
+                            <div class="cost-row"><span>Einspeisevergütung</span><span id="cost-revenue">--</span></div>
+                            <div class="cost-row total"><span>Gesamtnutzen</span><span id="cost-benefit">--</span></div>
+                            <p class="cost-note">Berechnet mit den aktuellen Tarifen aus den Einstellungen.</p>
+                        </div>
+
+                        <div class="cost-summary-card">
+                            <h3>Gesteuerte Geräte</h3>
+                            <table class="data-table" id="device-usage">
+                                <thead><tr><th>Gerät</th><th>Laufzeit</th><th>Energie</th><th>Starts</th></tr></thead>
+                                <tbody></tbody>
+                            </table>
                         </div>
                     </div>
+
+                    <section class="chart-card">
+                        <div class="chart-header">
+                            <div>
+                                <h3>Gesamtnutzen</h3>
+                                <p class="chart-subtitle">Ersparnis und Einspeisevergütung in €</p>
+                            </div>
+                        </div>
+                        <div class="chart" id="benefit-chart"></div>
+                    </section>
+
+                    <details class="table-view">
+                        <summary>Werte als Tabelle</summary>
+                        <table class="data-table" id="series-table">
+                            <thead><tr><th>Zeitraum</th><th>PV</th><th>Verbrauch</th><th>Einspeisung</th><th>Netzbezug</th><th>Nutzen</th></tr></thead>
+                            <tbody></tbody>
+                        </table>
+                    </details>
                 </section>
             </div>
 
-            <!-- Settings Tab -->
+            <!-- Einstellungen -->
             <div class="tab-content" id="settings-tab">
                 <section class="settings-section">
                     <div class="settings-card">
-                        <h3>Dashboard</h3>
-                        <div class="setting-row">
-                            <label for="api-url">Server URL:</label>
-                            <input type="text" id="api-url" placeholder="http://localhost:8000">
-                        </div>
-                        <div class="setting-row">
-                            <label for="update-interval">Aktualisierung:</label>
-                            <select id="update-interval">
-                                <option value="1000">1 Sekunde</option>
-                                <option value="5000" selected>5 Sekunden</option>
-                                <option value="10000">10 Sekunden</option>
-                                <option value="30000">30 Sekunden</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <div class="settings-card">
                         <h3>Solaranlage</h3>
                         <div class="setting-row">
-                            <label for="fronius-ip">Fronius IP:</label>
+                            <label for="fronius-ip">Fronius IP</label>
                             <input type="text" id="fronius-ip" placeholder="192.168.178.90">
                         </div>
                         <div class="setting-row">
-                            <label for="poll-interval">Abfrage alle (s):</label>
+                            <label for="poll-interval">Abfrage alle (s)</label>
                             <input type="number" id="poll-interval" min="1" max="3600" step="1">
                         </div>
                     </div>
@@ -250,285 +260,172 @@
                     <div class="settings-card">
                         <h3>Philips Hue</h3>
                         <div class="setting-row">
-                            <label for="enable-hue">Hue-Steuerung:</label>
+                            <label for="enable-hue">Hue-Steuerung</label>
                             <input type="checkbox" id="enable-hue">
                         </div>
                         <div class="setting-row">
-                            <label for="hue-bridge-ip">Bridge IP:</label>
+                            <label for="hue-bridge-ip">Bridge IP</label>
                             <input type="text" id="hue-bridge-ip" placeholder="192.168.178.26">
                         </div>
+                        <p class="setting-hint" id="hue-setting-status"></p>
                     </div>
 
                     <div class="settings-card">
                         <h3>Tarife</h3>
                         <div class="setting-row">
-                            <label for="electricity-price">Strompreis (€/kWh):</label>
+                            <label for="electricity-price">Strompreis (€/kWh)</label>
                             <input type="number" id="electricity-price" min="0" max="10" step="0.001">
                         </div>
                         <div class="setting-row">
-                            <label for="electricity-price-night">Nachttarif (€/kWh):</label>
+                            <label for="electricity-price-night">Nachtpreis (€/kWh)</label>
                             <input type="number" id="electricity-price-night" min="0" max="10" step="0.001">
                         </div>
                         <div class="setting-row">
-                            <label for="feed-in-tariff">Einspeisung (€/kWh):</label>
+                            <label for="night-tariff-start">Nachttarif ab (Uhr)</label>
+                            <input type="number" id="night-tariff-start" min="0" max="23" step="1">
+                        </div>
+                        <div class="setting-row">
+                            <label for="night-tariff-end">Nachttarif bis (Uhr)</label>
+                            <input type="number" id="night-tariff-end" min="0" max="23" step="1">
+                        </div>
+                        <div class="setting-row">
+                            <label for="feed-in-tariff">Einspeisung (€/kWh)</label>
                             <input type="number" id="feed-in-tariff" min="0" max="10" step="0.001">
                         </div>
                     </div>
 
                     <div class="settings-card">
-                        <h3>Gerätesteuerung</h3>
+                        <h3>Automatik</h3>
                         <div class="setting-row">
-                            <label for="hysteresis-minutes">Hysterese (Min):</label>
+                            <label for="hysteresis-minutes">Wartezeit nach Aus (Min)</label>
                             <input type="number" id="hysteresis-minutes" min="0" max="1440" step="1">
                         </div>
                         <div class="setting-row">
-                            <label for="manual-override-minutes">Manuell-Modus (Min):</label>
+                            <label for="manual-override-minutes">Pause nach Handschaltung (Min)</label>
                             <input type="number" id="manual-override-minutes" min="0" max="1440" step="1">
                         </div>
                         <div class="setting-row">
-                            <label for="battery-soc-on">Einschalten ab Akku (%):</label>
+                            <label for="battery-soc-on">Einschalten ab Akku (%)</label>
                             <input type="number" id="battery-soc-on" min="0" max="100" step="1">
                         </div>
                         <div class="setting-row">
-                            <label for="battery-soc-off">Ausschalten unter Akku (%):</label>
+                            <label for="battery-soc-off">Ausschalten unter Akku (%)</label>
                             <input type="number" id="battery-soc-off" min="0" max="100" step="1">
                         </div>
                     </div>
 
                     <button class="btn btn-primary" id="save-settings">
-                        <i data-lucide="save"></i>
-                        Speichern
+                        <i data-lucide="save"></i> Speichern
                     </button>
                 </section>
             </div>
         </div>
     </main>
 
-    <!-- Footer -->
     <footer class="app-footer">
         <div class="container">
             <div class="footer-content">
-                <span>SolarFlow v1.2.0</span>
+                <span id="app-version">SolarFlow</span>
                 <span class="footer-separator">•</span>
-                <span>Friedrich-Schiller-Universität Jena</span>
+                <a href="docs" target="_blank" rel="noopener">API</a>
                 <span class="footer-separator">•</span>
-                <span>© 2025 Jan Vogt</span>
+                <span>© Jan Vogt</span>
             </div>
         </div>
     </footer>
 
-    <!-- Add Device Modal -->
-    <div class="modal" id="add-device-modal">
+    <!-- Gerät anlegen / bearbeiten -->
+    <div class="modal" id="device-modal">
         <div class="modal-overlay"></div>
         <div class="modal-content">
             <div class="modal-header">
                 <h2 class="modal-title modal-title-green">
-                    <i data-lucide="plus-circle"></i>
-                    Neues Gerät hinzufügen
+                    <i data-lucide="plug"></i>
+                    <span id="device-modal-title">Neues Gerät</span>
                 </h2>
-                <button class="modal-close" id="close-add-device-modal">
-                    <i data-lucide="x"></i>
-                </button>
+                <button class="modal-close" id="close-device-modal"><i data-lucide="x"></i></button>
             </div>
 
             <div class="modal-body">
-                <form id="add-device-form">
+                <form id="device-form">
+                    <div class="form-group" id="hue-picker">
+                        <label class="form-label" for="device-hue-device">Hue-Gerät</label>
+                        <select id="device-hue-device">
+                            <option value="">-- Namen selbst eingeben --</option>
+                        </select>
+                        <span class="form-hint">Der Name muss exakt dem Namen in der Hue-App entsprechen</span>
+                    </div>
+
                     <div class="form-grid">
                         <div class="form-group">
                             <label class="form-label" for="device-name">Name *</label>
-                            <input type="text" id="device-name" name="name" required
-                                   placeholder="z.B. Waschmaschine">
+                            <input type="text" id="device-name" name="name" required placeholder="z.B. Heizkörper">
                         </div>
-
                         <div class="form-group">
                             <label class="form-label" for="device-description">Beschreibung</label>
-                            <input type="text" id="device-description" name="description"
-                                   placeholder="Optionale Beschreibung">
+                            <input type="text" id="device-description" name="description" placeholder="optional">
                         </div>
                     </div>
 
                     <div class="form-grid">
                         <div class="form-group">
                             <label class="form-label" for="device-power">Leistung (W) *</label>
-                            <input type="number" id="device-power" name="power_consumption"
-                                   required min="1" placeholder="z.B. 2000">
+                            <input type="number" id="device-power" name="power_consumption" required min="1" placeholder="2000">
                         </div>
-
                         <div class="form-group">
                             <label class="form-label" for="device-priority">Priorität *</label>
                             <select id="device-priority" name="priority" required>
-                                <option value="1">1 - Kritisch</option>
-                                <option value="2">2 - Sehr hoch</option>
-                                <option value="3">3 - Hoch</option>
-                                <option value="4">4 - Mittel-Hoch</option>
-                                <option value="5" selected>5 - Mittel</option>
-                                <option value="6">6 - Mittel-Niedrig</option>
-                                <option value="7">7 - Niedrig</option>
-                                <option value="8">8 - Sehr niedrig</option>
-                                <option value="9">9 - Minimal</option>
-                                <option value="10">10 - Optional</option>
+                                <option value="1">1 – höchste</option>
+                                <option value="2">2</option>
+                                <option value="3">3</option>
+                                <option value="4">4</option>
+                                <option value="5" selected>5</option>
+                                <option value="6">6</option>
+                                <option value="7">7</option>
+                                <option value="8">8</option>
+                                <option value="9">9</option>
+                                <option value="10">10 – niedrigste</option>
                             </select>
                         </div>
                     </div>
 
                     <div class="form-grid">
                         <div class="form-group">
-                            <label class="form-label" for="device-switch-on">Einschalten bei (W) *</label>
-                            <input type="number" id="device-switch-on" name="switch_on_threshold"
-                                   required min="0" placeholder="z.B. 2200">
-                            <span class="form-hint">Mindest-Überschuss zum Einschalten</span>
+                            <label class="form-label" for="device-switch-on">Einschalten ab Überschuss (W) *</label>
+                            <input type="number" id="device-switch-on" name="switch_on_threshold" required min="0" placeholder="2200">
                         </div>
-
                         <div class="form-group">
-                            <label class="form-label" for="device-switch-off">Ausschalten bei (W) *</label>
-                            <input type="number" id="device-switch-off" name="switch_off_threshold"
-                                   required min="0" placeholder="z.B. 1800">
-                            <span class="form-hint">Überschuss unter dem ausgeschaltet wird</span>
+                            <label class="form-label" for="device-switch-off">Ausschalten unter (W) *</label>
+                            <input type="number" id="device-switch-off" name="switch_off_threshold" required min="0" placeholder="1800">
+                            <span class="form-hint">Überschuss, der ohne das Gerät übrig bliebe</span>
                         </div>
                     </div>
-
-                    <div class="form-section-title">Optionale Einstellungen</div>
 
                     <div class="form-grid">
                         <div class="form-group">
                             <label class="form-label" for="device-min-runtime">Mindestlaufzeit (Min)</label>
-                            <input type="number" id="device-min-runtime" name="min_runtime"
-                                   min="0" value="0" placeholder="0">
-                            <span class="form-hint">0 = keine Mindestlaufzeit</span>
+                            <input type="number" id="device-min-runtime" name="min_runtime" min="0" max="1440" value="0">
                         </div>
-
                         <div class="form-group">
                             <label class="form-label" for="device-max-runtime">Max. Laufzeit/Tag (Min)</label>
-                            <input type="number" id="device-max-runtime" name="max_runtime_per_day"
-                                   min="0" value="0" placeholder="0">
+                            <input type="number" id="device-max-runtime" name="max_runtime_per_day" min="0" max="1440" value="0">
                             <span class="form-hint">0 = unbegrenzt</span>
                         </div>
                     </div>
 
                     <div class="form-group">
                         <label class="form-label">Erlaubte Zeitbereiche</label>
-                        <div id="time-ranges-container">
-                            <!-- Time ranges will be added here -->
-                        </div>
+                        <div id="time-ranges-container"></div>
                         <button type="button" class="btn btn-secondary btn-small" id="add-time-range">
-                            <i data-lucide="plus"></i>
-                            Zeitbereich hinzufügen
+                            <i data-lucide="plus"></i> Zeitbereich
                         </button>
-                        <span class="form-hint">Leer = immer erlaubt</span>
-                    </div>
-
-                    <!-- Hue Integration Section (nur sichtbar wenn Hue aktiv) -->
-                    <div id="hue-section" class="form-section-hue" style="display: none;">
-                        <div class="form-section-title">
-                            <i data-lucide="lightbulb"></i>
-                            Philips Hue Integration
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label" for="device-hue-device">Hue-Gerät zur Steuerung</label>
-                            <select id="device-hue-device" name="hue_device_name">
-                                <option value="">-- Kein Hue-Gerät (manueller Name) --</option>
-                                <!-- Hue devices will be populated dynamically -->
-                            </select>
-                            <span class="form-hint">Bei Auswahl wird der Gerätename automatisch übernommen</span>
-                        </div>
+                        <span class="form-hint">Leer = rund um die Uhr</span>
                     </div>
                 </form>
 
                 <div class="modal-actions">
-                    <button class="btn btn-secondary" id="cancel-add-device">
-                        Abbrechen
-                    </button>
-                    <button class="btn btn-primary" id="save-device">
-                        <i data-lucide="save"></i>
-                        Gerät speichern
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Connection Help Modal -->
-    <div class="modal" id="connection-help-modal">
-        <div class="modal-overlay"></div>
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2 class="modal-title">
-                    <i data-lucide="wifi-off"></i>
-                    Verbindungsproblem
-                </h2>
-                <button class="modal-close" id="close-help-modal">
-                    <i data-lucide="x"></i>
-                </button>
-            </div>
-
-            <div class="modal-body">
-                <div class="help-section">
-                    <div class="help-step">
-                        <div class="step-number">1</div>
-                        <div class="step-content">
-                            <h3>Fronius API aktivieren</h3>
-                            <p>Öffnen Sie die Einstellungen Ihres Fronius Wechselrichters:</p>
-                            <ul class="help-list">
-                                <li>Navigieren Sie zu <strong>Kommunikation → Solar API</strong></li>
-                                <li>Aktivieren Sie die <strong>API-Funktion</strong></li>
-                                <li>Notieren Sie sich die <strong>IP-Adresse</strong> des Wechselrichters</li>
-                            </ul>
-                        </div>
-                    </div>
-
-                    <div class="help-step">
-                        <div class="step-number">2</div>
-                        <div class="step-content">
-                            <h3>Backend-Server starten</h3>
-                            <p>Starten Sie das SolarFlow Backend mit der IP-Adresse Ihrer Fronius Anlage:</p>
-                            <div class="code-block">
-                                <code>python main.py --ip &lt;IP-Adresse&gt;</code>
-                                <button class="copy-btn" data-copy="python main.py --ip ">
-                                    <i data-lucide="copy"></i>
-                                </button>
-                            </div>
-                            <p class="help-note">
-                                <i data-lucide="info"></i>
-                                Beispiel: <code>python main.py --ip 192.168.1.100</code>
-                            </p>
-
-                            <p style="margin-top: 16px;">Oder verwenden Sie die Executable:</p>
-                            <div class="code-block">
-                                <code>SolarFlow-windows-x64.exe --ip &lt;IP-Adresse&gt;</code>
-                                <button class="copy-btn" data-copy="SolarFlow-windows-x64.exe --ip ">
-                                    <i data-lucide="copy"></i>
-                                </button>
-                            </div>
-                            <p class="help-note">
-                                <i data-lucide="info"></i>
-                                Beispiel: <code>SolarFlow-windows-x64.exe --ip 192.168.178.99</code>
-                            </p>
-                        </div>
-                    </div>
-
-                    <div class="help-step">
-                        <div class="step-number">3</div>
-                        <div class="step-content">
-                            <h3>Verbindung prüfen</h3>
-                            <p>Stellen Sie sicher, dass:</p>
-                            <ul class="help-list">
-                                <li>Der Backend-Server läuft (Port 8000)</li>
-                                <li>Firewall-Einstellungen korrekt sind</li>
-                                <li>Die Fronius Anlage im gleichen Netzwerk ist</li>
-                            </ul>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="modal-actions">
-                    <button class="btn btn-secondary" id="retry-connection">
-                        <i data-lucide="refresh-cw"></i>
-                        Verbindung erneut versuchen
-                    </button>
-                    <button class="btn btn-primary" id="open-settings">
-                        <i data-lucide="settings"></i>
-                        Zu den Einstellungen
-                    </button>
+                    <button class="btn btn-secondary" id="cancel-device">Abbrechen</button>
+                    <button class="btn btn-primary" id="save-device"><i data-lucide="save"></i> Speichern</button>
                 </div>
             </div>
         </div>

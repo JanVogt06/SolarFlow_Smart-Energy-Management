@@ -1,198 +1,92 @@
+import { renderColumns, renderLegend } from './chart.js';
+import { formatEnergy, formatEuro, formatNumber, formatPercent, formatPower, setText, refreshIcons } from './utils.js';
+
+export const COLORS = { pv: '#c98500', load: '#3987e5', benefit: '#199e70' };
+
 export class DashboardController {
-    constructor(api) {
-        this.api = api;
-        this.elements = this.cacheElements();
+    constructor() {
+        this.gridCard = document.getElementById('grid-card');
+        this.batteryCard = document.getElementById('battery-card');
+        this.batteryIcon = 'battery';
+        renderLegend(document.getElementById('today-legend'), [
+            { name: 'Erzeugung', color: COLORS.pv }, { name: 'Verbrauch', color: COLORS.load }
+        ]);
     }
 
-    cacheElements() {
-        return {
-            pvPower: document.getElementById('pv-power'),
-            loadPower: document.getElementById('load-power'),
-            gridPower: document.getElementById('grid-power'),
-            gridLabel: document.getElementById('grid-label'),
-            gridCard: document.getElementById('grid-card'),
-            batterySoc: document.getElementById('battery-soc'),
-            batteryCard: document.getElementById('battery-card'),
-            autarkyRate: document.getElementById('autarky-rate'),
-            surplusPower: document.getElementById('surplus-power'),
-            surplusStatus: document.getElementById('surplus-status'),
-            costSaved: document.getElementById('cost-saved'),
-            totalBenefit: document.getElementById('total-benefit'),
-            dailyEnergy: document.getElementById('daily-energy'),
-            feedInEnergy: document.getElementById('feed-in-energy')
-        };
+    update(current) {
+        if (!current) return;
+
+        setText('pv-power', formatPower(current.pv_power));
+        setText('load-power', formatPower(current.load_power));
+
+        const feeding = current.grid_power < 0;
+        this.gridCard.classList.toggle('feeding', feeding);
+        this.gridCard.classList.toggle('consuming', !feeding);
+        setText('grid-label', feeding ? 'Einspeisung' : 'Netzbezug');
+        setText('grid-power', formatPower(Math.abs(current.grid_power)));
+
+        this.updateBattery(current);
+
+        const autarky = document.getElementById('autarky-rate');
+        setText(autarky, formatPercent(current.autarky_rate));
+        autarky.classList.remove('low', 'medium', 'high');
+        autarky.classList.add(current.autarky_rate >= 75 ? 'high' : current.autarky_rate >= 50 ? 'medium' : 'low');
+
+        setText('surplus-power', formatPower(current.feed_in_power));
     }
 
-    update(data) {
-        if (!data) return;
+    updateBattery(current) {
+        this.batteryCard.style.display = current.has_battery ? '' : 'none';
+        if (!current.has_battery) return;
 
-        this.updatePowerValue('pvPower', data.pv_power, 'W');
-        this.updatePowerValue('loadPower', data.load_power, 'W');
+        const soc = current.battery_soc;
+        const power = Math.abs(current.battery_power);
+        setText('battery-soc', `${formatNumber(soc)} %`);
+        setText('battery-label', power < 10 ? 'Batterie' :
+            current.battery_power < 0 ? `lädt ${formatPower(power)}` : `entlädt ${formatPower(power)}`);
+        this.batteryCard.classList.toggle('low-battery', soc < 20);
+        this.batteryCard.classList.toggle('full-battery', soc > 95);
 
-        this.updateGridStatus(data.grid_power);
-
-        this.updateBatteryStatus(data);
-
-        this.updateMetrics(data);
-
-        this.animateChanges();
-    }
-
-    updateStats(stats) {
-        if (!stats) return;
-
-        if (stats.cost_saved !== undefined && stats.cost_saved !== null) {
-            this.updateValue('costSaved', `${stats.cost_saved.toFixed(2)}€`);
-        } else {
-            this.updateValue('costSaved', '0.00€');
-        }
-
-        if (stats.total_benefit !== undefined && stats.total_benefit !== null) {
-            this.updateValue('totalBenefit', `Gesamt: ${stats.total_benefit.toFixed(2)}€`);
-        } else {
-            this.updateValue('totalBenefit', 'Gesamt: 0.00€');
-        }
-
-        if (stats.pv_energy !== undefined && stats.pv_energy !== null) {
-            this.updateValue('dailyEnergy', `${stats.pv_energy.toFixed(1)} kWh`);
-        } else {
-            this.updateValue('dailyEnergy', '0.0 kWh');
-        }
-
-        if (stats.feed_in_energy !== undefined && stats.feed_in_energy !== null) {
-            this.updateValue('feedInEnergy', `${stats.feed_in_energy.toFixed(1)} kWh`);
-        } else {
-            this.updateValue('feedInEnergy', '0.0 kWh');
+        const icon = soc <= 20 ? 'battery-low' : soc >= 80 ? 'battery-full' : 'battery-medium';
+        if (icon !== this.batteryIcon) {
+            this.batteryIcon = icon;
+            this.batteryCard.querySelector('.flow-icon').innerHTML = `<i data-lucide="${icon}"></i>`;
+            refreshIcons();
         }
     }
 
-    updatePowerValue(elementId, value, unit) {
-        const element = this.elements[elementId];
-        if (!element) return;
-
-        const formattedValue = Math.round(value);
-        element.textContent = `${formattedValue} ${unit}`;
+    updateDevices(devicesData) {
+        const running = devicesData.devices.filter(d => d.state === 'on');
+        setText('devices-running', running.length
+            ? `${running.length} Gerät${running.length > 1 ? 'e' : ''} aktiv (${formatPower(devicesData.total_consumption)})`
+            : 'keine Geräte aktiv');
     }
 
-    updateGridStatus(gridPower) {
-        const card = this.elements.gridCard;
-        const label = this.elements.gridLabel;
-        const power = this.elements.gridPower;
+    updateToday(stats) {
+        setText('daily-energy', formatEnergy(stats.energy.pv));
+        setText('feed-in-energy', formatEnergy(stats.energy.feed_in));
+        setText('benefit-today', formatEuro(stats.costs.benefit));
+        setText('autarky-today', formatPercent(stats.autarky));
 
-        if (!card || !label || !power) return;
-
-        const isFeeding = gridPower < 0;
-        const absolutePower = Math.abs(Math.round(gridPower));
-
-        card.classList.toggle('feeding', isFeeding);
-        card.classList.toggle('consuming', !isFeeding);
-
-        label.textContent = isFeeding ? 'Einspeisung' : 'Netzbezug';
-        power.textContent = `${absolutePower} W`;
-    }
-
-    updateBatteryStatus(data) {
-        const card = this.elements.batteryCard;
-        const soc = this.elements.batterySoc;
-
-        if (!card || !soc) return;
-
-        if (data.has_battery && data.battery_soc !== null) {
-            card.style.display = 'block';
-            const socValue = Math.round(data.battery_soc);
-            soc.textContent = `${socValue}%`;
-
-            this.updateBatteryIcon(socValue);
-
-            card.classList.toggle('low-battery', socValue < 20);
-            card.classList.toggle('full-battery', socValue > 95);
-        } else {
-            card.style.display = 'none';
-        }
-    }
-
-    updateBatteryIcon(soc) {
-        const card = this.elements.batteryCard;
-        if (!card) return;
-
-        const iconElement = card.querySelector('.flow-icon svg');
-        if (!iconElement) return;
-
-        let iconName = 'battery';
-        if (soc <= 20) iconName = 'battery-low';
-        else if (soc >= 80) iconName = 'battery-full';
-        else iconName = 'battery-medium';
-
-        iconElement.setAttribute('data-lucide', iconName);
-        if (window.lucide) {
-            lucide.createIcons();
-        }
-    }
-
-    updateMetrics(data) {
-        const autarky = Math.round(data.autarky_rate);
-        this.updateValue('autarkyRate', `${autarky}%`);
-        this.updateAutarkyColor(autarky);
-
-        const surplus = Math.round(data.surplus_power);
-        this.updateValue('surplusPower', `${surplus} W`);
-        this.updateSurplusStatus(surplus);
-    }
-
-    updateAutarkyColor(value) {
-        const element = this.elements.autarkyRate;
-        if (!element) return;
-
-        element.classList.remove('low', 'medium', 'high');
-        if (value >= 75) {
-            element.classList.add('high');
-        } else if (value >= 50) {
-            element.classList.add('medium');
-        } else {
-            element.classList.add('low');
-        }
-    }
-
-    updateSurplusStatus(surplus) {
-        const element = this.elements.surplusStatus;
-        if (!element) return;
-
-        let status = '';
-        let className = '';
-
-        if (surplus > 2000) {
-            status = 'Sehr hoher Überschuss';
-            className = 'very-high';
-        } else if (surplus > 1000) {
-            status = 'Hoher Überschuss';
-            className = 'high';
-        } else if (surplus > 100) {
-            status = 'Moderater Überschuss';
-            className = 'moderate';
-        } else {
-            status = 'Kein Überschuss';
-            className = 'none';
-        }
-
-        element.textContent = status;
-        element.className = 'metric-subtext ' + className;
-    }
-
-    updateValue(elementId, value) {
-        const element = this.elements[elementId];
-        if (element && element.textContent !== value) {
-            element.textContent = value;
-        }
-    }
-
-    animateChanges() {
-        Object.values(this.elements).forEach(element => {
-            if (element && element.classList.contains('updating')) {
-                element.style.transform = 'scale(1.05)';
-                setTimeout(() => {
-                    element.style.transform = 'scale(1)';
-                }, 150);
+        renderColumns(document.getElementById('today-chart'), {
+            labels: stats.series.map(s => s.label),
+            titles: stats.series.map(s => `${s.label}:00 – ${s.label}:59 Uhr`),
+            series: [
+                { name: 'Erzeugung', color: COLORS.pv, values: stats.series.map(s => s.pv) },
+                { name: 'Verbrauch', color: COLORS.load, values: stats.series.map(s => s.load) }
+            ],
+            format: v => formatNumber(v, 1),
+            tooltipRows: i => {
+                const s = stats.series[i];
+                return s.pv === null ? [['', 'noch keine Werte']] : [
+                    ['Erzeugung', formatEnergy(s.pv)], ['Verbrauch', formatEnergy(s.load)],
+                    ['Einspeisung', formatEnergy(s.feed_in)], ['Netzbezug', formatEnergy(s.grid)]
+                ];
             }
         });
+    }
+
+    updateTotal(stats) {
+        setText('benefit-total', formatEuro(stats.costs.benefit));
     }
 }

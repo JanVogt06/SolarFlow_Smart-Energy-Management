@@ -80,11 +80,13 @@ class EnergyController:
 
     def hue_status(self) -> Dict[str, object]:
         bridge = self.bridge
+        # Ein einzelner Aussetzer ist noch keine Trennung (siehe HueBridge.DOWN_AFTER)
+        connected = bridge is not None and (bridge.connected or 0 < bridge.failures < bridge.DOWN_AFTER)
         return {
             "enabled": bridge is not None,
             "bridge_ip": self.config.hue_bridge_ip,
-            "connected": bool(bridge and bridge.connected),
-            "error": bridge.error if bridge else None,
+            "connected": connected,
+            "error": bridge.error if bridge is not None and not connected else None,
         }
 
     def unreachable_reason(self, device: Device) -> Optional[str]:

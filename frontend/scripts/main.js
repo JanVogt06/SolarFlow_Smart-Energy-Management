@@ -1,200 +1,100 @@
+import { ApiClient } from './modules/api.js';
 import { DashboardController } from './modules/dashboard.js';
 import { DevicesController } from './modules/devices.js';
-import { StatisticsController } from './modules/statistic.js';
 import { SettingsController } from './modules/settings.js';
+import { StatisticsController } from './modules/statistic.js';
 import { TabController } from './modules/tabs.js';
-import { ApiClient } from './modules/api.js';
-import { updateConnectionStatus } from './modules/utils.js';
+import { refreshIcons, setText, showBanner, updateConnectionStatus } from './modules/utils.js';
+
+// Gesamtwerte ändern sich langsam - seltener abfragen als die Live-Werte
+const TOTAL_REFRESH_MS = 60000;
 
 class SolarFlowApp {
     constructor() {
         this.api = new ApiClient();
-        this.controllers = {};
-        this.updateInterval = 5000;
-        this.intervalId = null;
-        this.isConnected = false;
+        this.interval = 5000;
+        this.timer = null;
+        this.lastTotals = 0;
 
-        this.init();
+        this.dashboard = new DashboardController();
+        this.devices = new DevicesController(this.api);
+        this.statistics = new StatisticsController(this.api);
+        this.settings = new SettingsController(this.api, settings => this.setInterval(settings.update_interval));
+        this.tabs = new TabController((name, previous) => {
+            this.controllerFor(previous)?.onDeactivate?.();
+            this.controllerFor(name)?.onActivate?.();
+        });
+
+        refreshIcons();
+        this.start();
+        document.addEventListener('visibilitychange', () => document.hidden ? this.stop() : this.start());
     }
 
-    async init() {
+    controllerFor(tab) {
+        return { devices: this.devices, statistics: this.statistics, settings: this.settings }[tab];
+    }
+
+    async start() {
+        if (this.timer) return;
         try {
-            if (window.lucide) {
-                lucide.createIcons();
-            }
-
-            await this.api.dropUnreachableOverride();
-
-            this.tabController = new TabController(this.onTabChange.bind(this));
-
-            this.controllers.dashboard = new DashboardController(this.api);
-            this.controllers.devices = new DevicesController(this.api);
-            this.controllers.statistics = new StatisticsController(this.api);
-            this.controllers.settings = new SettingsController(this.api, this.onSettingsChange.bind(this));
-
-            this.initHelpModal();
-            this.updateInterval = parseInt(localStorage.getItem('updateInterval')) || this.updateInterval;
-
-            await this.startUpdates();
-            this.setupEventListeners();
-        } catch (error) {
-            console.error('Failed to initialize app:', error);
-            updateConnectionStatus(false);
-            this.showHelpModal();
+            const [status, settings] = await Promise.all([this.api.status(), this.api.settings()]);
+            setText('app-version', `SolarFlow ${status.version}`);
+            this.interval = Math.max(settings.update_interval, 2) * 1000;
+        } catch {
+            // Der erste Update-Zyklus meldet die Störung
         }
+        await this.update();
+        this.timer = setInterval(() => this.update(), this.interval);
     }
 
-    initHelpModal() {
-        const modal = document.getElementById('connection-help-modal');
-        const closeBtn = document.getElementById('close-help-modal');
-        const retryBtn = document.getElementById('retry-connection');
-        const settingsBtn = document.getElementById('open-settings');
-        const copyBtns = document.querySelectorAll('.copy-btn');
-
-        if (closeBtn) {
-            closeBtn.addEventListener('click', () => this.hideHelpModal());
-        }
-
-        if (retryBtn) {
-            retryBtn.addEventListener('click', () => {
-                this.hideHelpModal();
-                this.restartUpdates();
-            });
-        }
-
-        if (settingsBtn) {
-            settingsBtn.addEventListener('click', () => {
-                this.hideHelpModal();
-                this.tabController.switchTab('settings');
-            });
-        }
-
-        copyBtns.forEach(btn => {
-            btn.addEventListener('click', () => {
-                const textToCopy = btn.dataset.copy;
-                navigator.clipboard.writeText(textToCopy).then(() => {
-                    const originalIcon = btn.innerHTML;
-                    btn.innerHTML = '<i data-lucide="check"></i>';
-                    lucide.createIcons();
-                    setTimeout(() => {
-                        btn.innerHTML = originalIcon;
-                        lucide.createIcons();
-                    }, 2000);
-                });
-            });
-        });
-
-        if (modal) {
-            modal.addEventListener('click', (e) => {
-                if (e.target.classList.contains('modal-overlay')) {
-                    this.hideHelpModal();
-                }
-            });
-        }
+    stop() {
+        clearInterval(this.timer);
+        this.timer = null;
     }
 
-    showHelpModal() {
-        const modal = document.getElementById('connection-help-modal');
-        if (modal) {
-            modal.classList.add('active');
-            setTimeout(() => lucide.createIcons(), 100);
+    setInterval(seconds) {
+        this.interval = Math.max(seconds, 2) * 1000;
+        this.stop();
+        this.start();
+    }
+
+    async update() {
+        const [current, devices, today] = await Promise.allSettled([
+            this.api.current(), this.api.devices(), this.api.stats('day')
+        ]);
+
+        const serverDown = [current, devices, today].every(r => r.status === 'rejected' && !r.reason.status);
+        updateConnectionStatus(!serverDown);
+        if (serverDown) {
+            showBanner('Keine Verbindung zum SolarFlow-Server – läuft das Programm bzw. der Container?');
+            return;
         }
-    }
 
-    hideHelpModal() {
-        const modal = document.getElementById('connection-help-modal');
-        if (modal) {
-            modal.classList.remove('active');
+        setText('last-update', new Date().toLocaleTimeString('de-DE'));
+        if (current.status === 'fulfilled') this.dashboard.update(current.value);
+        if (devices.status === 'fulfilled') {
+            this.dashboard.updateDevices(devices.value);
+            this.devices.update(devices.value);
         }
-    }
+        if (today.status === 'fulfilled') this.dashboard.updateToday(today.value);
 
-    setupEventListeners() {
-        document.addEventListener('visibilitychange', () => {
-            if (document.hidden) {
-                this.pauseUpdates();
-            } else {
-                this.resumeUpdates();
-            }
-        });
+        showBanner(this.problem(current, devices));
 
-        window.addEventListener('online', () => this.resumeUpdates());
-        window.addEventListener('offline', () => {
-            this.isConnected = false;
-            updateConnectionStatus(false);
-            this.pauseUpdates();
-            this.showHelpModal();
-        });
-    }
-
-    onTabChange(tabName) {
-        if (this.controllers[tabName] && this.controllers[tabName].onActivate) {
-            this.controllers[tabName].onActivate();
+        if (Date.now() - this.lastTotals > TOTAL_REFRESH_MS) {
+            this.lastTotals = Date.now();
+            this.api.stats('all').then(total => this.dashboard.updateTotal(total)).catch(() => {});
         }
+        this.statistics.refresh();
     }
 
-    onSettingsChange(settings) {
-        this.updateInterval = settings.updateInterval;
-        this.api.setBaseUrl(settings.apiUrl);
-        this.restartUpdates();
-    }
-
-    async updateAll() {
-        try {
-            this.updateTimestamp();
-
-            const [currentData, devicesData, statsData] = await Promise.all([
-                this.api.getCurrentData(),
-                this.api.getDevices(),
-                this.api.getStats()
-            ]);
-
-            this.controllers.dashboard.update(currentData);
-            this.controllers.devices.update(devicesData);
-            this.controllers.statistics.update(statsData);
-            this.controllers.dashboard.updateStats(statsData);
-
-            if (!this.isConnected) {
-                this.isConnected = true;
-                updateConnectionStatus(true);
-                this.hideHelpModal();
-            }
-        } catch (error) {
-            console.error('Update error:', error);
-            this.isConnected = false;
-            updateConnectionStatus(false);
-            this.showHelpModal();
+    problem(current, devices) {
+        if (current.status === 'rejected') return `Wechselrichter: ${current.reason.message}`;
+        if (current.value.stale) {
+            return `Der Wechselrichter antwortet nicht – letzter Messwert vor ${Math.round(current.value.age_seconds / 60)} min`;
         }
-    }
-
-    async startUpdates() {
-        await this.updateAll();
-        this.intervalId = setInterval(() => this.updateAll(), this.updateInterval);
-    }
-
-    pauseUpdates() {
-        if (this.intervalId) {
-            clearInterval(this.intervalId);
-            this.intervalId = null;
-        }
-    }
-
-    resumeUpdates() {
-        if (!this.intervalId) {
-            this.startUpdates();
-        }
-    }
-
-    restartUpdates() {
-        this.pauseUpdates();
-        this.startUpdates();
-    }
-
-    updateTimestamp() {
-        const element = document.getElementById('last-update');
-        if (element) {
-            const now = new Date();
-            element.textContent = now.toLocaleTimeString('de-DE');
-        }
+        const hue = devices.status === 'fulfilled' ? devices.value.hue : null;
+        if (hue?.enabled && !hue.connected && hue.error) return `Hue: ${hue.error} – Geräte werden nicht geschaltet`;
+        return null;
     }
 }
 

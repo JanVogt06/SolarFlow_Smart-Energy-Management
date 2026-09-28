@@ -1,0 +1,128 @@
+/* Diagramme */
+.chart-card {
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-lg) var(--spacing-xl);
+    margin-bottom: var(--spacing-xl);
+}
+
+.chart-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: var(--spacing-md);
+    flex-wrap: wrap;
+    margin-bottom: var(--spacing-md);
+}
+
+.chart-header h3 {
+    font-size: var(--font-size-lg);
+    color: var(--color-text-primary);
+}
+
+.chart-subtitle {
+    font-size: var(--font-size-sm);
+    color: var(--color-text-muted);
+}
+
+.chart {
+    position: relative;
+    width: 100%;
+    min-height: 240px;
+}
+
+.chart svg {
+    display: block;
+    overflow: visible;
+    touch-action: pan-y;
+}
+
+.chart-grid {
+    stroke: rgba(255, 255, 255, 0.06);
+    stroke-width: 1;
+}
+
+.chart-baseline {
+    stroke: rgba(255, 255, 255, 0.18);
+    stroke-width: 1;
+}
+
+.chart-tick {
+    fill: var(--color-text-muted);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+}
+
+.chart-empty {
+    fill: var(--color-text-muted);
+    font-size: var(--font-size-sm);
+}
+
+.chart-hover {
+    fill: rgba(255, 255, 255, 0.04);
+}
+
+.chart-legend {
+    display: flex;
+    gap: var(--spacing-md);
+    flex-wrap: wrap;
+    font-size: var(--font-size-sm);
+    color: var(--color-text-secondary);
+}
+
+.legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.legend-swatch {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    margin-right: 6px;
+    flex-shrink: 0;
+}
+
+.legend-item .legend-swatch {
+    margin-right: 0;
+}
+
+.chart-tooltip {
+    position: absolute;
+    top: 8px;
+    min-width: 180px;
+    padding: var(--spacing-sm) var(--spacing-md);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    font-size: var(--font-size-sm);
+    pointer-events: none;
+    z-index: var(--z-tooltip);
+}
+
+.chart-tooltip-title {
+    color: var(--color-text-primary);
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+
+.chart-tooltip-row {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--spacing-md);
+    color: var(--color-text-secondary);
+}
+
+.chart-tooltip-row span {
+    display: inline-flex;
+    align-items: center;
+}
+
+.chart-tooltip-row strong {
+    color: var(--color-text-primary);
+    font-variant-numeric: tabular-nums;
+}

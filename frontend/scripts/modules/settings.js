@@ -1,187 +1,78 @@
-import { showNotification } from './utils.js';
+import { refreshIcons, setText, showNotification } from './utils.js';
 
-// Einstellungsname der API -> Eingabefeld im Formular
-const SERVER_FIELDS = {
-    fronius_ip: { id: 'fronius-ip', type: 'text' },
-    update_interval: { id: 'poll-interval', type: 'number' },
-    enable_hue: { id: 'enable-hue', type: 'checkbox' },
-    hue_bridge_ip: { id: 'hue-bridge-ip', type: 'text' },
-    electricity_price: { id: 'electricity-price', type: 'number' },
-    electricity_price_night: { id: 'electricity-price-night', type: 'number' },
-    feed_in_tariff: { id: 'feed-in-tariff', type: 'number' },
-    hysteresis_minutes: { id: 'hysteresis-minutes', type: 'number' },
-    manual_override_minutes: { id: 'manual-override-minutes', type: 'number' },
-    min_battery_soc_on: { id: 'battery-soc-on', type: 'number' },
-    min_battery_soc_off: { id: 'battery-soc-off', type: 'number' }
+// Einstellung der API -> Eingabefeld
+const FIELDS = {
+    fronius_ip: ['fronius-ip', 'text'],
+    update_interval: ['poll-interval', 'number'],
+    enable_hue: ['enable-hue', 'checkbox'],
+    hue_bridge_ip: ['hue-bridge-ip', 'text'],
+    electricity_price: ['electricity-price', 'number'],
+    electricity_price_night: ['electricity-price-night', 'number'],
+    night_tariff_start: ['night-tariff-start', 'number'],
+    night_tariff_end: ['night-tariff-end', 'number'],
+    feed_in_tariff: ['feed-in-tariff', 'number'],
+    hysteresis_minutes: ['hysteresis-minutes', 'number'],
+    manual_override_minutes: ['manual-override-minutes', 'number'],
+    min_battery_soc_on: ['battery-soc-on', 'number'],
+    min_battery_soc_off: ['battery-soc-off', 'number']
 };
 
 export class SettingsController {
-    constructor(api, onSettingsChange) {
+    constructor(api, onSaved) {
         this.api = api;
-        this.onSettingsChange = onSettingsChange;
-
-        this.elements = {
-            apiUrl: document.getElementById('api-url'),
-            updateInterval: document.getElementById('update-interval'),
-            saveButton: document.getElementById('save-settings')
-        };
-        this.serverInputs = Object.fromEntries(
-            Object.entries(SERVER_FIELDS).map(([name, field]) => [name, document.getElementById(field.id)])
-        );
-
-        this.init();
+        this.onSaved = onSaved;
+        this.button = document.getElementById('save-settings');
+        this.button.addEventListener('click', () => this.save());
     }
 
-    init() {
-        this.loadClientSettings();
-        this.loadServerSettings();
-        this.setupEventListeners();
-    }
-
-    setupEventListeners() {
-        if (this.elements.saveButton) {
-            this.elements.saveButton.addEventListener('click', () => this.saveSettings());
-        }
-
-        if (this.elements.apiUrl) {
-            this.elements.apiUrl.addEventListener('input', () => this.validateApiUrl());
-        }
-    }
-
-    loadClientSettings() {
-        // Standard ist die Adresse, unter der das Dashboard selbst geladen wurde
-        if (this.elements.apiUrl) {
-            this.elements.apiUrl.value = localStorage.getItem('apiUrl') || window.location.origin;
-        }
-        if (this.elements.updateInterval) {
-            this.elements.updateInterval.value = localStorage.getItem('updateInterval') || '5000';
-        }
-    }
-
-    async loadServerSettings() {
+    async onActivate() {
         try {
-            this.applyServerSettings(await this.api.getSettings());
+            this.fill(await this.api.settings());
+            const hue = await this.api.hue();
+            setText('hue-setting-status', !hue.enabled ? ''
+                : hue.connected ? `Verbunden – ${hue.lights.length} Hue-Geräte gefunden`
+                : hue.error || 'Bridge nicht erreichbar');
         } catch (error) {
-            console.warn('Server-Einstellungen konnten nicht geladen werden:', error);
+            showNotification(`Einstellungen nicht geladen: ${error.message}`, 'error');
         }
     }
 
-    applyServerSettings(settings) {
-        if (!settings) return;
-
-        for (const [name, field] of Object.entries(SERVER_FIELDS)) {
-            const input = this.serverInputs[name];
-            const value = settings[name];
-            if (!input || value === undefined || value === null) continue;
-
-            if (field.type === 'checkbox') {
-                input.checked = Boolean(value);
-            } else {
-                input.value = value;
-            }
+    fill(settings) {
+        for (const [name, [id, type]] of Object.entries(FIELDS)) {
+            const input = document.getElementById(id);
+            if (!input || settings[name] === undefined) continue;
+            if (type === 'checkbox') input.checked = Boolean(settings[name]);
+            else input.value = settings[name];
         }
     }
 
-    readServerSettings() {
+    read() {
         const payload = {};
-
-        for (const [name, field] of Object.entries(SERVER_FIELDS)) {
-            const input = this.serverInputs[name];
-            if (!input) continue;
-
-            if (field.type === 'checkbox') {
-                payload[name] = input.checked;
-            } else if (field.type === 'number') {
-                if (input.value !== '') payload[name] = parseFloat(input.value);
-            } else if (input.value.trim()) {
-                payload[name] = input.value.trim();
-            }
+        for (const [name, [id, type]] of Object.entries(FIELDS)) {
+            const input = document.getElementById(id);
+            if (type === 'checkbox') payload[name] = input.checked;
+            else if (type === 'number' && input.value !== '') payload[name] = Number(input.value);
+            else if (type === 'text' && input.value.trim()) payload[name] = input.value.trim();
         }
-
         return payload;
     }
 
-    readClientSettings() {
-        return {
-            apiUrl: this.elements.apiUrl.value.trim(),
-            updateInterval: parseInt(this.elements.updateInterval.value)
-        };
-    }
-
-    async saveSettings() {
-        const button = this.elements.saveButton;
-        button.disabled = true;
-        button.innerHTML = '<i data-lucide="loader"></i> Speichere...';
-        lucide.createIcons();
-
+    async save() {
+        this.button.disabled = true;
+        this.button.innerHTML = '<i data-lucide="loader"></i> Speichere...';
+        refreshIcons();
         try {
-            const client = this.readClientSettings();
-            this.validateClientSettings(client);
-
-            // Erst testen, dann speichern - sonst blockiert eine falsche URL die ganze App
-            await this.testConnection(client.apiUrl);
-            this.api.setBaseUrl(client.apiUrl);
-            localStorage.setItem('updateInterval', client.updateInterval);
-
-            const response = await this.api.updateSettings(this.readServerSettings());
-            this.applyServerSettings(response.settings);
-
-            if (this.onSettingsChange) {
-                this.onSettingsChange(client);
-            }
-
-            showNotification('Einstellungen gespeichert', 'success');
+            const response = await this.api.saveSettings(this.read());
+            this.fill(response.settings);
+            showNotification(response.message, 'success');
+            this.onSaved?.(response.settings);
+            setTimeout(() => this.onActivate(), 1500);
         } catch (error) {
-            showNotification(error.message || 'Fehler beim Speichern', 'error');
+            showNotification(error.message, 'error');
         } finally {
-            button.disabled = false;
-            button.innerHTML = '<i data-lucide="save"></i> Speichern';
-            lucide.createIcons();
+            this.button.disabled = false;
+            this.button.innerHTML = '<i data-lucide="save"></i> Speichern';
+            refreshIcons();
         }
-    }
-
-    validateClientSettings(settings) {
-        try {
-            new URL(settings.apiUrl);
-        } catch {
-            throw new Error('Server URL ist keine gültige Adresse');
-        }
-
-        if (!(settings.updateInterval >= 1000 && settings.updateInterval <= 60000)) {
-            throw new Error('Aktualisierung muss zwischen 1 und 60 Sekunden liegen');
-        }
-    }
-
-    validateApiUrl() {
-        const input = this.elements.apiUrl;
-
-        try {
-            new URL(input.value);
-            input.classList.remove('error');
-            input.classList.add('valid');
-        } catch {
-            input.classList.remove('valid');
-            input.classList.add('error');
-        }
-    }
-
-    async testConnection(url) {
-        let response;
-        try {
-            response = await fetch(`${url}/api/status`, {
-                method: 'GET',
-                signal: AbortSignal.timeout(5000)
-            });
-        } catch {
-            throw new Error(`Server unter ${url} nicht erreichbar`);
-        }
-
-        if (!response.ok) {
-            throw new Error(`Server antwortet mit HTTP ${response.status}`);
-        }
-    }
-
-    onActivate() {
-        this.loadServerSettings();
     }
 }
