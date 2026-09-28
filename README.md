@@ -162,8 +162,8 @@ Beim ersten Start übernimmt SolarFlow aus den CSV-Logs alle Messpunkte und Scha
 die in der Datenbank fehlen, und verkleinert sie – vorher wurde alles doppelt gespeichert.
 Das dauert einmalig ein bis zwei Minuten; vorher wird daneben ein Backup
 `solar_energy.db.v0.<Zeit>.bak` angelegt. Die übernommenen CSV-Dateien und das Backup
-werden **beim darauffolgenden Start** gelöscht – also erst, wenn die migrierte Datenbank
-einmal erfolgreich gelaufen ist.
+werden erst gelöscht, wenn die migrierte Datenbank **zehn Minuten fehlerfrei gelaufen** ist –
+und zwar beim darauffolgenden Start. Stürzt die neue Version vorher ab, bleibt alles liegen.
 
 Ein Blick hinein:
 
