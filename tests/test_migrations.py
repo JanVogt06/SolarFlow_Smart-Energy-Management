@@ -99,10 +99,11 @@ def legacy(tmp_path: Path):
 
 
 def open_db(data_dir: Path, started_at: datetime) -> Database:
-    db = Database(data_dir / "solarflow.db")
+    legacy_db = data_dir / "Datalogs" / "solar_energy.db"
+    db = Database(legacy_db if legacy_db.exists() else data_dir / "solarflow.db")
     db.open(MigrationContext(legacy_log_dir=data_dir / "Datalogs",
                              devices={"Heizkörper Jan": (2000, 1), "Entfeuchter (neu)": (200, 3)}),
-            started_at, legacy_db=data_dir / "Datalogs" / "solar_energy.db")
+            started_at)
     return db
 
 
@@ -117,7 +118,7 @@ def query(db: Database, sql: str):
 def test_legacy_data_is_merged_into_compact_database(legacy):
     db = open_db(legacy, datetime.now())
 
-    assert not (legacy / "Datalogs" / "solar_energy.db").exists()
+    assert db.path == legacy / "Datalogs" / "solar_energy.db"  # bleibt, wo sie war
     assert query(db, "PRAGMA user_version")[0][0] == migrations.MIGRATIONS[-1][0]
     assert query(db, "PRAGMA journal_mode")[0][0] == "wal"
 
@@ -156,14 +157,15 @@ def test_legacy_files_are_removed_on_the_next_start(legacy):
 
     # Erst nach dem nächsten Start wird aufgeräumt
     assert (legacy / "Datalogs" / "Solardata" / "solar_data_20260110.csv").exists()
-    backups = list(legacy.glob("solarflow.db.v0.*.bak"))
+    backups = list((legacy / "Datalogs").glob("solar_energy.db.v0.*.bak"))
     assert len(backups) == 1
 
     past = time.time() - 60
     os.utime(backups[0], (past, past))
     db = open_db(legacy, first_start + timedelta(minutes=1))
 
-    assert not (legacy / "Datalogs").exists()
+    assert sorted(p.name for p in (legacy / "Datalogs").iterdir() if not p.name.endswith(("-wal", "-shm"))) \
+        == ["solar_energy.db"]
     assert not backups[0].exists()
     assert query(db, "SELECT COUNT(*) FROM legacy_files")[0][0] == 0
     assert query(db, "SELECT COUNT(*) FROM solar_data")[0][0] == 4
@@ -180,6 +182,7 @@ def test_unknown_files_keep_their_folder(legacy):
 
 def test_fresh_install(tmp_path):
     db = open_db(tmp_path, datetime.now())
+    assert db.path == tmp_path / "solarflow.db"
     assert query(db, "SELECT COUNT(*) FROM solar_data")[0][0] == 0
     assert list(tmp_path.glob("*.bak")) == []
 
@@ -196,7 +199,7 @@ def test_failed_migration_is_rolled_back(legacy, monkeypatch):
     with pytest.raises(RuntimeError):
         open_db(legacy, datetime.now())
 
-    db_path = legacy / "solarflow.db"
+    db_path = legacy / "Datalogs" / "solar_energy.db"
     conn = sqlite3.connect(db_path)
     assert conn.execute("PRAGMA user_version").fetchone()[0] == 3
     assert conn.execute("SELECT COUNT(*) FROM sqlite_master WHERE name = 'halb'").fetchone()[0] == 0

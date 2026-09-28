@@ -103,14 +103,17 @@ def main(argv: Optional[List[str]] = None) -> int:
     store = DeviceStore(config.devices_file)
     store.load()
 
+    # Bestehende Installationen behalten ihre Datenbank am alten Ort - der Ordner
+    # kann ein eigener Mount sein, ein Umzug würde dort scheitern oder Daten verlieren
     legacy_dir = config.data_dir / "Datalogs"
-    db = Database(config.database_file, config.update_interval)
+    legacy_db = legacy_dir / "solar_energy.db"
+    db_path = legacy_db if legacy_db.is_file() and not config.database_file.exists() else config.database_file
+    db = Database(db_path, config.update_interval)
     try:
         db.open(
             MigrationContext(legacy_log_dir=legacy_dir,
                              devices={d.name: (d.power_consumption, d.priority) for d in store.all()}),
             started_at,
-            legacy_db=legacy_dir / "solar_energy.db",
         )
         db.refresh_hourly()
     except Exception:

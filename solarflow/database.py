@@ -7,7 +7,6 @@ beide nicht.
 """
 
 import logging
-import os
 import sqlite3
 import threading
 from datetime import datetime, timedelta
@@ -82,33 +81,18 @@ class Database:
         """Längste Zeit, die ein einzelner Messwert gelten darf."""
         return max(60.0, 3.0 * self.update_interval)
 
-    def open(self, ctx: MigrationContext, started_at: datetime,
-             legacy_db: Optional[Path] = None) -> None:
+    def open(self, ctx: MigrationContext, started_at: datetime) -> None:
         """
         Öffnet die Datenbank, migriert sie und räumt Altlasten früherer Starts weg.
 
         Args:
             ctx: Kontext für die Migrationen
             started_at: Startzeit dieses Programmlaufs
-            legacy_db: Frühere Datenbankdatei, die hierher umzieht
         """
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        if legacy_db is not None:
-            self._adopt_legacy_database(legacy_db)
-
         self._conn = self._connect()
         apply_migrations(self._conn, self.path, ctx)
         cleanup_legacy_files(self._conn, self.path, ctx.legacy_log_dir, started_at)
-
-    def _adopt_legacy_database(self, legacy_db: Path) -> None:
-        """Zieht Datalogs/solar_energy.db samt WAL-Dateien an den neuen Ort um."""
-        if self.path.exists() or not legacy_db.is_file():
-            return
-        for suffix in ("", "-wal", "-shm"):
-            source = Path(f"{legacy_db}{suffix}")
-            if source.exists():
-                os.replace(source, f"{self.path}{suffix}")
-        logger.info(f"Datenbank von {legacy_db} nach {self.path} verschoben")
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.path, timeout=30, check_same_thread=False)

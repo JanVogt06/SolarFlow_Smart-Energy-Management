@@ -157,13 +157,13 @@ Alles Veränderliche liegt im Container unter `/data` und damit im Volume
 | `/data/solar_monitor.log` | Logdatei (rotiert bei 5 MB, zwei alte Dateien bleiben) |
 | `/data/.python_hue` | Zugangsschlüssel der Hue Bridge |
 
-Beim ersten Start nach dem Update von Version 1.x zieht SolarFlow die alte Datenbank
-`Datalogs/solar_energy.db` nach `solarflow.db` um, übernimmt aus den CSV-Logs alle
-Messpunkte und Schaltvorgänge, die in der Datenbank fehlen, und verkleinert sie (vorher
-wurde alles doppelt gespeichert). Das dauert einmalig ein bis zwei Minuten. Vorher wird
-ein Backup `solarflow.db.v0.<Zeit>.bak` angelegt. Die übernommenen CSV-Dateien und das
-Backup werden **beim darauffolgenden Start** gelöscht – also erst, wenn die migrierte
-Datenbank einmal erfolgreich gelaufen ist.
+**Update von Version 1.x:** Die Datenbank bleibt, wo sie war (`Datalogs/solar_energy.db`).
+Beim ersten Start übernimmt SolarFlow aus den CSV-Logs alle Messpunkte und Schaltvorgänge,
+die in der Datenbank fehlen, und verkleinert sie – vorher wurde alles doppelt gespeichert.
+Das dauert einmalig ein bis zwei Minuten; vorher wird daneben ein Backup
+`solar_energy.db.v0.<Zeit>.bak` angelegt. Die übernommenen CSV-Dateien und das Backup
+werden **beim darauffolgenden Start** gelöscht – also erst, wenn die migrierte Datenbank
+einmal erfolgreich gelaufen ist.
 
 Ein Blick hinein:
 
