@@ -19,7 +19,7 @@ from solarflow import __version__
 from solarflow.api import APIServer
 from solarflow.config import Config, SettingsStore
 from solarflow.controller import EnergyController
-from solarflow.database import Database
+from solarflow.database import Database, adopt_legacy_database
 from solarflow.devices import DeviceStore
 from solarflow.fronius import FroniusClient
 from solarflow.migrations import MigrationContext
@@ -117,11 +117,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     store = DeviceStore(config.devices_file)
     store.load()
 
-    # Bestehende Installationen behalten ihre Datenbank am alten Ort - der Ordner
-    # kann ein eigener Mount sein, ein Umzug würde dort scheitern oder Daten verlieren
     legacy_dir = config.data_dir / "Datalogs"
-    legacy_db = legacy_dir / "solar_energy.db"
-    db_path = legacy_db if legacy_db.is_file() and not config.database_file.exists() else config.database_file
+    db_path = adopt_legacy_database(legacy_dir / "solar_energy.db", config.database_file)
     db = Database(db_path, config.update_interval)
     try:
         db.open(

@@ -7,6 +7,7 @@ beide nicht.
 """
 
 import logging
+import os
 import sqlite3
 import threading
 from datetime import datetime, timedelta
@@ -57,6 +58,32 @@ WHERE timestamp < :end
 GROUP BY hour
 ORDER BY hour
 """
+
+
+def adopt_legacy_database(legacy: Path, target: Path) -> Path:
+    """
+    Zieht Datalogs/solar_energy.db (samt WAL-Dateien) nach `target` um.
+
+    Ein Umbenennen ist atomar und klappt nur innerhalb desselben Mounts. Ist
+    Datalogs ein eigener Mount, scheitert es - dann bleibt die Datenbank, wo
+    sie ist, statt außerhalb des Mounts zu landen.
+
+    Returns:
+        Pfad, unter dem die Datenbank jetzt liegt
+    """
+    if target.exists() or not legacy.is_file():
+        return target
+    try:
+        os.replace(legacy, target)
+    except OSError as e:
+        logger.warning(f"{legacy} lässt sich nicht nach {target} verschieben ({e}) - bleibt am alten Ort")
+        return legacy
+    for suffix in ("-wal", "-shm"):
+        side = Path(f"{legacy}{suffix}")
+        if side.exists():
+            os.replace(side, f"{target}{suffix}")
+    logger.info(f"Datenbank nach {target} verschoben")
+    return target
 
 
 def _format(moment: datetime) -> str:

@@ -251,3 +251,49 @@ def test_utc_timestamps_of_the_old_docker_image_become_local_time(legacy, berlin
 def test_local_timestamps_stay_untouched(legacy, berlin):
     db = open_db(legacy, datetime.now())
     assert query(db, "SELECT MIN(timestamp) FROM solar_data")[0][0] == "2026-01-10 12:00:00"
+
+
+def test_existing_database_moves_out_of_datalogs(tmp_path):
+    from solarflow.database import adopt_legacy_database
+
+    (tmp_path / "Datalogs").mkdir()
+    legacy = tmp_path / "Datalogs" / "solar_energy.db"
+    sqlite3.connect(legacy).execute("CREATE TABLE x (y)").connection.close()
+    Path(f"{legacy}-wal").write_bytes(b"")
+
+    target = adopt_legacy_database(legacy, tmp_path / "solarflow.db")
+
+    assert target == tmp_path / "solarflow.db" and target.exists()
+    assert Path(f"{target}-wal").exists()
+    assert list((tmp_path / "Datalogs").iterdir()) == []
+
+
+def test_database_stays_when_it_cannot_move(tmp_path, monkeypatch):
+    from solarflow import database
+
+    (tmp_path / "Datalogs").mkdir()
+    legacy = tmp_path / "Datalogs" / "solar_energy.db"
+    legacy.write_bytes(b"x")
+
+    def cross_device(*args):
+        raise OSError(18, "Invalid cross-device link")
+
+    monkeypatch.setattr(database.os, "replace", cross_device)
+    assert database.adopt_legacy_database(legacy, tmp_path / "solarflow.db") == legacy
+    assert legacy.exists()
+
+
+def test_migrated_database_in_datalogs_moves_and_datalogs_disappears(legacy):
+    """Der Weg einer Installation, die schon mit der Datenbank in Datalogs migriert wurde."""
+    from solarflow.database import adopt_legacy_database
+
+    db = open_db(legacy, datetime.now())  # migriert noch in Datalogs/solar_energy.db
+    db.confirm_legacy_cleanup()
+    db.close()
+
+    target = adopt_legacy_database(legacy / "Datalogs" / "solar_energy.db", legacy / "solarflow.db")
+    db = Database(target)
+    db.open(MigrationContext(legacy_log_dir=legacy / "Datalogs"), datetime.now() + timedelta(minutes=1))
+
+    assert not (legacy / "Datalogs").exists()
+    assert query(db, "SELECT COUNT(*) FROM solar_data")[0][0] == 4
