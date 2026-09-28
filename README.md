@@ -29,10 +29,9 @@ SolarFlow ist ein benutzerfreundliches Energie-Management-System für **Fronius 
 
 ### Das macht SolarFlow für Sie:
 - 📊 **Zeigt Ihre Solarproduktion in Echtzeit** im Browser
-- 🔌 **Schaltet Geräte automatisch ein** wenn genug Solarstrom da ist
-- 💰 **Berechnet Ihre Ersparnis** und zeigt Tagesstatistiken
+- 🔌 **Schaltet Philips-Hue-Steckdosen automatisch ein**, wenn genug Solarstrom da ist
+- 💰 **Berechnet Ihre Ersparnis** – für Tag, Woche, Monat, Jahr und die gesamte Laufzeit
 - 📱 **Funktioniert auf jedem Gerät** mit Webbrowser (PC, Tablet, Smartphone)
-- 🏠 **Steuert smarte Geräte** wie Philips Hue Steckdosen
 
 ## 🚀 Schnellstart (5 Minuten)
 
@@ -61,29 +60,22 @@ chmod +x SolarFlow-*
 ./SolarFlow-*
 ```
 
-### 3️⃣ Browser öffnet automatisch
+### 3️⃣ Dashboard öffnen
 
-Das Web-Dashboard öffnet sich automatisch unter: **http://localhost:8000**
+Im Browser **http://localhost:8000** aufrufen – von anderen Geräten im Netzwerk über die
+Adresse des Rechners, zum Beispiel `http://192.168.1.20:8000`.
 
-Falls nicht, öffnen Sie einen Browser und geben Sie die Adresse manuell ein.
+### 4️⃣ Wechselrichter und Hue Bridge eintragen
 
-### 4️⃣ Fronius IP-Adresse eingeben
+Im Tab **Einstellungen** die IP-Adresse des Fronius Wechselrichters und der Hue Bridge
+eintragen und die Hue-Steuerung aktivieren. Beim ersten Verbinden den **Link-Button auf der
+Hue Bridge drücken** – SolarFlow koppelt sich innerhalb weniger Sekunden und merkt sich den
+Zugang.
 
-Starten Sie das SolarFlow Backend mit der IP-Adresse Ihrer Fronius Anlage:
-
-```bash python main.py --ip```
-
-Oder verwenden Sie die Executable:
-
-```bash SolarFlow-windows-x64.exe --ip```
-
-Beispiele:
+Alternativ direkt beim Start:
 
 ```bash
-python main.py --ip 192.168.1.100
-```
-```bash
-SolarFlow-windows-x64.exe --ip 192.168.178.99
+python main.py --ip 192.168.178.90 --hue-ip 192.168.178.26
 ```
 
 ## 🐳 Mit Docker starten
@@ -102,22 +94,20 @@ services:
     image: ghcr.io/janvogt06/solarflow:latest
     container_name: solarflow
     restart: unless-stopped
+    # Zeit zum Ausschalten der Geräte beim Stoppen
+    stop_grace_period: 30s
     ports:
       - "${SOLARFLOW_PORT:-8000}:8000"
     environment:
+      - TZ=Europe/Berlin
       # IP-Adresse des Fronius Wechselrichters
       - FRONIUS_IP=192.168.178.90
-      # Philips Hue (optional)
-      - ENABLE_HUE=False
+      # Philips Hue
+      - ENABLE_HUE=True
       - HUE_BRIDGE_IP=192.168.178.26
     volumes:
-      # Einstellungen, Geräte, Logs, Datenbank und Hue-Token
+      # Einstellungen, Geräte, Datenbank, Log und Hue-Schlüssel
       - solarflow-data:/data
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/status').read()"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
 
 volumes:
   solarflow-data:
@@ -163,9 +153,17 @@ Alles Veränderliche liegt im Container unter `/data` und damit im Volume
 | --- | --- |
 | `/data/settings.json` | Im Dashboard geänderte Einstellungen |
 | `/data/devices.json` | Gerätekonfiguration |
-| `/data/solar_monitor.log` | Logdatei |
-| `/data/Datalogs/` | CSV-Logs und `solar_energy.db` |
-| `/data/.python_hue` | Token der Hue Bridge |
+| `/data/solarflow.db` | Messwerte, Schaltvorgänge und Statistik (SQLite) |
+| `/data/solar_monitor.log` | Logdatei (rotiert bei 5 MB, zwei alte Dateien bleiben) |
+| `/data/.python_hue` | Zugangsschlüssel der Hue Bridge |
+
+Beim ersten Start nach dem Update von Version 1.x zieht SolarFlow die alte Datenbank
+`Datalogs/solar_energy.db` nach `solarflow.db` um, übernimmt aus den CSV-Logs alle
+Messpunkte und Schaltvorgänge, die in der Datenbank fehlen, und verkleinert sie (vorher
+wurde alles doppelt gespeichert). Das dauert einmalig ein bis zwei Minuten. Vorher wird
+ein Backup `solarflow.db.v0.<Zeit>.bak` angelegt. Die übernommenen CSV-Dateien und das
+Backup werden **beim darauffolgenden Start** gelöscht – also erst, wenn die migrierte
+Datenbank einmal erfolgreich gelaufen ist.
 
 Ein Blick hinein:
 
@@ -175,8 +173,7 @@ docker compose exec solarflow cat /data/settings.json
 
 Fronius-IP, Hue-Bridge, Strompreise und Schwellwerte lassen sich auch nach dem Start im
 Tab **Einstellungen** ändern; die Umgebungsvariablen der Compose-Datei sind nur die
-Startwerte. Sämtliche in [Erweiterte Einstellungen](#️-erweiterte-einstellungen)
-genannten Optionen sind zusätzlich als Umgebungsvariablen setzbar.
+Startwerte (siehe [Umgebungsvariablen](#umgebungsvariablen)).
 
 Wer die frühere Compose-Datei mit den einzelnen Bind-Mounts (`./devices.json`,
 `./settings.json`, …) benutzt hat, kopiert die vorhandenen Dateien einmalig ins Volume:
@@ -207,85 +204,96 @@ und legt daraus ein GitHub-Release an.
 ![Dashboard Screenshot](assets/dashboard-screenshot.png)
 *Modernes Web-Dashboard mit Live-Daten Ihrer Solaranlage*
 
-### Terminal-Ansicht (optional)
+### Terminal-Ansicht
 ![Live Display](assets/live-display-demo.png)
-*Zusätzliche Terminal-Ansicht für Technik-Interessierte*
+*Läuft SolarFlow in einem Terminal, gibt es dort eine Live-Ansicht*
 
 ## ✨ Hauptfunktionen
 
 ### 📊 Live-Monitoring
-- **Echtzeitdaten** von Ihrem Fronius Wechselrichter
-- **Übersichtliche Grafiken** für:
-  - Aktuelle Solarproduktion
-  - Hausverbrauch
-  - Einspeisung ins Netz
-  - Batteriestand (falls vorhanden)
-- **Tagesstatistiken** mit Kostenberechnung
+- **Echtzeitdaten** von Ihrem Fronius Wechselrichter: PV, Hausverbrauch, Netz und Akku
+- **Tagesverlauf** mit Erzeugung und Verbrauch je Stunde
 
-### 🔌 Intelligente Gerätesteuerung
-- **Automatisches Ein-/Ausschalten** von Geräten bei Solarüberschuss
-- **Prioritätssystem**: Wichtige Geräte werden zuerst eingeschaltet
-- **Zeitsteuerung**: Geräte nur zu bestimmten Zeiten (z.B. Poolpumpe nur tagsüber)
-- **Philips Hue Integration**: Steuert echte Smart-Home-Geräte
-- **Manueller Modus**: Schalten Sie ein Gerät selbst — in der Weboberfläche oder in der
-  Hue-App — pausiert die Automatik für dieses Gerät (Standard: 30 Minuten)
-- **Erreichbarkeits-Erkennung**: Nicht eingesteckte Hue-Geräte werden als
-  „Nicht erreichbar" angezeigt statt fälschlich als eingeschaltet
+### 🔌 Automatische Gerätesteuerung mit Philips Hue
+- **Einschalten bei Überschuss**, Ausschalten, sobald der Überschuss ohne das Gerät unter
+  dessen Ausschalt-Schwellwert fiele
+- **Prioritäten**: wichtige Geräte zuerst; bei Bedarf werden niedriger priorisierte
+  Geräte zugunsten wichtigerer abgeschaltet
+- **Zeitfenster, Mindest- und Maximallaufzeit, Wartezeit nach dem Ausschalten**
+- **Akku zuerst**: Einschalten erst ab einem Mindest-Ladestand
+- **Manueller Modus**: Wer ein Gerät im Dashboard oder in der Hue-App schaltet, pausiert
+  dafür die Automatik (Standard: 30 Minuten)
+- **Ehrlicher Status**: Ist die Bridge oder ein Gerät nicht erreichbar, wird nichts
+  geschaltet und das Dashboard sagt, warum
+- **Sicher beim Beenden**: Beim Stoppen und wenn der Wechselrichter länger keine Daten
+  liefert, werden die automatisch gesteuerten Geräte ausgeschaltet
+- **Laufzeiten überstehen Neustarts** – sie werden aus dem Schaltprotokoll wiederhergestellt
 
-### 💰 Kostenanalyse
-- **Tägliche Ersparnis** in Euro
-- **Eigenverbrauchsquote** und Autarkiegrad
-- **Vergleich**: Was hätte der Strom ohne Solar gekostet?
-- **Einspeisevergütung** wird berücksichtigt
+### 💰 Statistik und Kosten
+- **Tag, Woche, Monat, Jahr und Gesamt** mit Blättern in die Vergangenheit
+- **Erzeugung, Verbrauch, Eigenverbrauch, Netzbezug, Einspeisung**, Autarkie und
+  Eigenverbrauchsquote
+- **Ersparnis** gegenüber reinem Netzbezug inklusive Nachttarif und Einspeisevergütung
+- **Laufzeit, Energie und Starts** jedes gesteuerten Geräts
+- Alles wird aus den gespeicherten Messwerten berechnet – nichts setzt sich beim Neustart zurück
 
 ## ⚙️ Erweiterte Einstellungen
 
 ### Einstellungen im Browser
 
-Im Tab **Einstellungen** lassen sich Fronius-IP, Hue-Bridge, Strompreise, Einspeisevergütung
-sowie Hysterese-, Manuell- und Batterie-Schwellwerte ändern. Die Werte greifen sofort und
-landen in `settings.json`; alles, was dort nicht steht, kommt weiterhin aus den
-Umgebungsvariablen.
+Im Tab **Einstellungen** lassen sich Fronius-IP, Hue-Bridge, Tarife und die Regeln der
+Automatik ändern. Die Werte greifen sofort und landen in `settings.json`.
 
 ### Geräte konfigurieren
 
-SolarFlow kann Ihre Haushaltsgeräte intelligent steuern. Erstellen Sie eine `devices.json` Datei:
+Geräte legen Sie im Tab **Geräte** an und bearbeiten sie dort. Der Name muss exakt dem
+Namen des Geräts in der Hue-App entsprechen – das Formular bietet die gefundenen
+Hue-Geräte zur Auswahl an. Gespeichert wird in `devices.json`:
 
 ```json
 [
   {
-    "name": "Waschmaschine",
+    "name": "Heizkörper Wohnzimmer",
     "power_consumption": 2000,
-    "priority": 3,
+    "priority": 2,
     "switch_on_threshold": 2200,
     "switch_off_threshold": 1800,
-    "allowed_time_ranges": [["08:00", "20:00"]]
-  },
-  {
-    "name": "Poolpumpe", 
-    "power_consumption": 750,
-    "priority": 6,
-    "switch_on_threshold": 1000,
-    "switch_off_threshold": 500,
-    "allowed_time_ranges": [["10:00", "18:00"]]
+    "allowed_time_ranges": [["06:00", "22:00"]]
   }
 ]
 ```
 
 ### Kommandozeilen-Optionen
 
-Für erfahrene Nutzer gibt es zusätzliche Startoptionen:
-
 ```bash
-# Mit direkter IP-Angabe starten
-SolarFlow --ip 192.168.178.90
-
-# Ohne Web-Interface (nur Terminal)
-SolarFlow --no-api
-
-# Mit angepasstem Update-Intervall (Sekunden)
-SolarFlow --interval 10
+python main.py --ip 192.168.178.90       # Fronius Wechselrichter
+python main.py --hue-ip 192.168.178.26   # Hue Bridge (aktiviert die Hue-Steuerung)
+python main.py --interval 10             # Abfrage alle 10 Sekunden
+python main.py --port 9000               # Dashboard auf Port 9000
+python main.py --data-dir /pfad/zu/daten # Ablage für Einstellungen, Geräte und Datenbank
 ```
+
+### Umgebungsvariablen
+
+Kommandozeile schlägt im Dashboard gespeicherte Einstellungen, diese schlagen die Umgebung.
+
+| Variable | Standard | Bedeutung |
+| --- | --- | --- |
+| `DATA_DIR` | `.` | Ordner für alle Daten |
+| `API_PORT` | `8000` | Port des Dashboards |
+| `LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR` |
+| `FRONIUS_IP` | `192.168.178.90` | Wechselrichter |
+| `UPDATE_INTERVAL` | `5` | Abfrageintervall in Sekunden |
+| `ENABLE_HUE` | `False` | Hue-Steuerung an/aus |
+| `HUE_BRIDGE_IP` | `192.168.178.26` | Hue Bridge |
+| `DEVICE_HYSTERESIS_MINUTES` | `5` | Wartezeit nach dem Ausschalten |
+| `DEVICE_MANUAL_OVERRIDE_MINUTES` | `30` | Pause der Automatik nach Handschaltung |
+| `DEVICE_MIN_BATTERY_SOC_ON` | `95` | Einschalten erst ab diesem Akkustand (%) |
+| `DEVICE_MIN_BATTERY_SOC_OFF` | `20` | Ausschalten unter diesem Akkustand (%) |
+| `ELECTRICITY_PRICE` | `0.40` | Strompreis €/kWh |
+| `ELECTRICITY_PRICE_NIGHT` | `0.30` | Nachtpreis €/kWh |
+| `NIGHT_TARIFF_START` / `NIGHT_TARIFF_END` | `22` / `6` | Nachttarif (volle Stunden) |
+| `FEED_IN_TARIFF` | `0.082` | Einspeisevergütung €/kWh |
 
 ## 🔗 Nützliche Links
 
@@ -344,15 +352,21 @@ Standardmäßig läuft SolarFlow nur in Ihrem Heimnetzwerk. Für Zugriff von au�
 <summary><b>Von Quellcode ausführen</b></summary>
 
 ```bash
-# Repository klonen
 git clone https://github.com/JanVogt06/SolarFlow-SmartEnergyManagement.git
 cd SolarFlow-SmartEnergyManagement
-
-# Abhängigkeiten installieren
 pip install -r requirements.txt
+python main.py --ip <FRONIUS_IP>
+```
 
-# Starten
-python SolarFlow.py --ip <FRONIUS_IP>
+Läuft SolarFlow in einem Terminal, zeigt es dort zusätzlich eine Live-Ansicht.
+</details>
+
+<details>
+<summary><b>Tests</b></summary>
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest tests
 ```
 </details>
 

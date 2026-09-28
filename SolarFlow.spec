@@ -15,11 +15,7 @@ if frontend_path.exists():
                 relative_path = file_path.relative_to(frontend_path.parent)
                 frontend_files.append((str(file_path), str(relative_path.parent)))
 
-# Weitere Daten-Dateien
 datas = frontend_files
-for extra in ('devices.json', 'settings.json'):
-    if os.path.exists(extra):
-        datas.append((extra, '.'))
 
 a = Analysis(
     ['main.py'],
@@ -37,19 +33,6 @@ a = Analysis(
         'uvicorn.protocols.websockets.auto',
         'uvicorn.lifespan',
         'uvicorn.lifespan.on',
-        'fastapi',
-        'starlette',
-        'pydantic',
-        'anyio',
-        'sniffio',
-        'httptools',
-        'websockets',
-        'watchfiles',
-        'python-multipart',
-        'click',
-        'h11',
-        'httpcore',
-        'httpx',
     ],
     hookspath=[],
     hooksconfig={},

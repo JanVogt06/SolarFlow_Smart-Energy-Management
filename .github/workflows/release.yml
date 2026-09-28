@@ -10,8 +10,28 @@ permissions:
   packages: write
 
 jobs:
+  test:
+    name: Run tests
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Install dependencies
+      run: pip install -r requirements-dev.txt
+
+    - name: Run pytest
+      run: python -m pytest -q tests
+
   build:
     name: Build on ${{ matrix.os }}
+    needs: test
     runs-on: ${{ matrix.os }}
 
     strategy:
@@ -66,22 +86,20 @@ jobs:
 
         ## 🚀 Quick Start
         1. Executable starten (Doppelklick oder Terminal)
-        2. Browser öffnet automatisch das Dashboard (http://localhost:8000)
-        3. Fronius IP-Adresse konfigurieren
+        2. Dashboard im Browser öffnen: http://localhost:8000
+        3. Unter "Einstellungen" Fronius- und Hue-Bridge-IP eintragen
 
         ## ⚙️ Kommandozeilen-Optionen
-        - `--ip <IP>`: Fronius Wechselrichter IP direkt setzen
-        - `--no-api`: Ohne Web-Interface starten (nur Terminal)
-        - `--no-colors`: Ohne Farben im Terminal
-        - `--simple`: Einfache einzeilige Ausgabe
-        - `--interval <sec>`: Update-Intervall in Sekunden
+        - `--ip <IP>`: IP des Fronius Wechselrichters
+        - `--hue-ip <IP>`: IP der Hue Bridge (aktiviert die Hue-Steuerung)
+        - `--interval <sec>`: Abfrageintervall in Sekunden
+        - `--port <port>`: Port des Dashboards
+        - `--data-dir <ordner>`: Ablage für Einstellungen, Geräte und Datenbank
 
         ## 📊 Features
-        - Echtzeit Solar-Monitoring
-        - Web Dashboard mit Live-Updates
-        - Intelligente Gerätesteuerung
-        - Tagesstatistiken und Kostenberechnung
-        - REST API für Integration
+        - Live-Werte von PV, Verbrauch, Netz und Akku
+        - Automatisches Schalten von Philips-Hue-Geräten nach Überschuss
+        - Statistik für Tag, Woche, Monat, Jahr und Gesamtzeit mit Kostenberechnung
 
         ## 🔗 Links
         - Dashboard: http://localhost:8000
@@ -123,6 +141,7 @@ jobs:
 
   docker:
     name: Build image and push to GHCR
+    needs: test
     runs-on: ubuntu-latest
 
     permissions:
