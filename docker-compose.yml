@@ -9,6 +9,7 @@ services:
     ports:
       - "${SOLARFLOW_PORT:-8000}:8000"
     environment:
+      # Zeitzone für Statistik, Zeitfenster und Nachttarif
       - TZ=${TZ:-Europe/Berlin}
       # IP-Adresse des Fronius Wechselrichters
       - FRONIUS_IP=${FRONIUS_IP:-192.168.178.90}

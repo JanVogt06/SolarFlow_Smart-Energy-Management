@@ -165,6 +165,12 @@ Das dauert einmalig ein bis zwei Minuten; vorher wird daneben ein Backup
 werden erst gelöscht, wenn die migrierte Datenbank **zehn Minuten fehlerfrei gelaufen** ist –
 und zwar beim darauffolgenden Start. Stürzt die neue Version vorher ab, bleibt alles liegen.
 
+Das alte Docker-Image setzte keine Zeitzone und protokollierte deshalb in UTC – Zeitfenster
+der Geräte, Nachttarif und Tagesgrenzen lagen ein bis zwei Stunden daneben. Das neue Image
+läuft in `TZ=Europe/Berlin` (in der Compose-Datei änderbar), und die Migration rechnet die
+Historie im Container einmalig in Ortszeit um. Wer im alten Container schon selbst `TZ`
+gesetzt hatte, verhindert die Umrechnung mit `LEGACY_TIMESTAMPS=local`.
+
 Ein Blick hinein:
 
 ```bash
@@ -280,6 +286,7 @@ Kommandozeile schlägt im Dashboard gespeicherte Einstellungen, diese schlagen d
 | Variable | Standard | Bedeutung |
 | --- | --- | --- |
 | `DATA_DIR` | `.` | Ordner für alle Daten |
+| `TZ` | `Europe/Berlin` (Docker) | Zeitzone für Statistik, Zeitfenster und Nachttarif |
 | `API_PORT` | `8000` | Port des Dashboards |
 | `LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR` |
 | `FRONIUS_IP` | `192.168.178.90` | Wechselrichter |

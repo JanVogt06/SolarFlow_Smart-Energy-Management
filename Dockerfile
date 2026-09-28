@@ -1,4 +1,4 @@
-FROM python:3.14
+FROM python:3.14-slim
 
 LABEL org.opencontainers.image.title="SolarFlow Smart Energy Management" \
       org.opencontainers.image.description="Schaltet Philips-Hue-Geräte nach dem Solarüberschuss eines Fronius Wechselrichters" \
@@ -6,6 +6,9 @@ LABEL org.opencontainers.image.title="SolarFlow Smart Energy Management" \
       org.opencontainers.image.licenses="MIT"
 
 WORKDIR /app
+
+# Zeitzonendaten, damit TZ greift - Statistik, Zeitfenster und Nachttarif rechnen in Ortszeit
+RUN apt-get update && apt-get install -y --no-install-recommends tzdata && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
@@ -19,6 +22,7 @@ COPY frontend ./frontend
 # HOME zeigt dorthin, damit auch ein alter phue-Schlüssel gefunden wird.
 ENV DATA_DIR=/data \
     HOME=/data \
+    TZ=Europe/Berlin \
     API_PORT=8000 \
     PYTHONUNBUFFERED=1
 

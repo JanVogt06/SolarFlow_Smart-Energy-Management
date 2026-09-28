@@ -22,7 +22,7 @@ import logging
 import re
 import sqlite3
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, Dict, Iterable, Iterator, List, Optional, Set, Tuple
 
@@ -41,6 +41,8 @@ class MigrationContext:
     legacy_log_dir: Optional[Path] = None
     # Gerätename -> (Leistung, Priorität) aus devices.json
     devices: Dict[str, Tuple[float, int]] = field(default_factory=dict)
+    # Hat die alte Version in UTC protokolliert? Das alte Docker-Image setzte keine Zeitzone.
+    legacy_timestamps_utc: bool = False
 
 
 def _run_script(conn: sqlite3.Connection, script: str) -> None:
@@ -396,7 +398,92 @@ def _migration_005_events_from_status(conn: sqlite3.Connection, ctx: MigrationCo
     """)
 
 
-def _migration_006_hourly_energy(conn: sqlite3.Connection, ctx: MigrationContext) -> None:
+def _utc_offsets(first: datetime, last: datetime) -> List[Tuple[str, str, int]]:
+    """
+    Zeiträume (UTC) mit gleichem Abstand der lokalen Zeitzone zu UTC, in Sekunden.
+
+    Die Zeitzone ist die des laufenden Prozesses (TZ). Sommer- und Winterzeit
+    wechseln zur vollen Stunde, deshalb genügt ein Schritt pro Stunde.
+    """
+    def offset(moment: datetime) -> int:
+        stamp = moment.replace(tzinfo=timezone.utc).timestamp()
+        return int((datetime.fromtimestamp(stamp) - moment).total_seconds())
+
+    ranges: List[Tuple[str, str, int]] = []
+    cursor = first.replace(minute=0, second=0, microsecond=0)
+    start, current = cursor, offset(cursor)
+    while cursor <= last:
+        cursor += timedelta(hours=1)
+        value = offset(cursor)
+        if value != current or cursor > last:
+            ranges.append((start.strftime("%Y-%m-%d %H:%M:%S"), cursor.strftime("%Y-%m-%d %H:%M:%S"), current))
+            start, current = cursor, value
+    return ranges
+
+
+def _migration_006_utc_to_local_time(conn: sqlite3.Connection, ctx: MigrationContext) -> None:
+    """
+    Rechnet in UTC protokollierte Zeitstempel in Ortszeit um.
+
+    Das Docker-Image der alten Version setzte keine Zeitzone, der Container lief
+    in UTC: Messwerte, Schaltereignisse, Zeitfenster der Geräte und Nachttarif
+    lagen ein bis zwei Stunden daneben. Ab jetzt setzt das Image TZ; damit die
+    Historie zur neuen Zählung passt, wird sie hier einmal verschoben - mit der
+    jeweils gültigen Sommer- oder Winterzeit.
+
+    In der Nacht der Rückstellung auf Winterzeit gibt es 02:00-03:00 doppelt;
+    fallen dabei zwei Messwerte auf dieselbe Sekunde, bleibt der erste.
+    """
+    if not ctx.legacy_timestamps_utc:
+        return
+
+    first, last = conn.execute("""
+        SELECT MIN(t), MAX(t) FROM (SELECT MIN(timestamp) AS t FROM solar_data UNION ALL
+                                    SELECT MAX(timestamp) FROM solar_data UNION ALL
+                                    SELECT MIN(timestamp) FROM device_events UNION ALL
+                                    SELECT MAX(timestamp) FROM device_events)
+    """).fetchone()
+    if first is None:
+        return
+
+    ranges = _utc_offsets(datetime.fromisoformat(first), datetime.fromisoformat(last))
+    if all(offset == 0 for _, _, offset in ranges):
+        return  # Prozess läuft selbst in UTC - nichts zu verschieben
+
+    conn.execute("CREATE TEMP TABLE tz_ranges (start TEXT, end TEXT, offset INTEGER)")
+    conn.executemany("INSERT INTO tz_ranges VALUES (?, ?, ?)", ranges)
+    before = conn.execute("SELECT COUNT(*) FROM solar_data").fetchone()[0]
+    _run_script(conn, """
+        CREATE TABLE solar_data_new (
+            timestamp TEXT PRIMARY KEY,
+            pv_power INTEGER NOT NULL,
+            grid_power INTEGER NOT NULL,
+            battery_power INTEGER NOT NULL,
+            load_power INTEGER NOT NULL,
+            battery_soc REAL
+        ) WITHOUT ROWID;
+
+        INSERT OR IGNORE INTO solar_data_new
+        SELECT datetime(s.timestamp, printf('%+d seconds', r.offset)),
+               s.pv_power, s.grid_power, s.battery_power, s.load_power, s.battery_soc
+        FROM solar_data s JOIN tz_ranges r ON s.timestamp >= r.start AND s.timestamp < r.end
+        ORDER BY 1;
+
+        DROP TABLE solar_data;
+        ALTER TABLE solar_data_new RENAME TO solar_data;
+
+        UPDATE device_events SET timestamp = datetime(timestamp, (
+            SELECT printf('%+d seconds', r.offset) FROM tz_ranges r
+            WHERE device_events.timestamp >= r.start AND device_events.timestamp < r.end));
+
+        DROP TABLE tz_ranges
+    """)
+    after = conn.execute("SELECT COUNT(*) FROM solar_data").fetchone()[0]
+    logger.info(f"Zeitstempel von UTC in Ortszeit umgerechnet ({before - after} doppelte Messpunkte "
+                f"aus der Zeitumstellung verworfen)")
+
+
+def _migration_007_hourly_energy(conn: sqlite3.Connection, ctx: MigrationContext) -> None:
     """
     Stundenwerte als Cache für die Statistik.
 
@@ -433,7 +520,8 @@ MIGRATIONS: List[Tuple[int, str, Migration]] = [
     (3, "compact solar_data to the measured values", _migration_003_compact_solar_data),
     (4, "merge legacy csv logs", _migration_004_import_legacy_csv),
     (5, "replace device_status snapshots by events", _migration_005_events_from_status),
-    (6, "hourly energy cache", _migration_006_hourly_energy),
+    (6, "shift utc timestamps of the old docker image to local time", _migration_006_utc_to_local_time),
+    (7, "hourly energy cache", _migration_007_hourly_energy),
 ]
 
 

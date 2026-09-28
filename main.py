@@ -7,6 +7,7 @@ und im Dashboard unter "Einstellungen" ändern.
 
 import argparse
 import logging
+import os
 import signal
 import sys
 from datetime import datetime
@@ -87,6 +88,19 @@ def setup_logging(config: Config, console_handler: Optional[logging.Handler] = N
         logging.getLogger(noisy).setLevel(logging.WARNING)
 
 
+def legacy_timestamps_utc() -> bool:
+    """
+    Hat die Version vor 2.0 in UTC protokolliert?
+
+    Das alte Docker-Image setzte keine Zeitzone, lief also in UTC. Wer damals
+    selbst TZ gesetzt hatte, überspringt die Umrechnung mit LEGACY_TIMESTAMPS=local.
+    """
+    setting = os.getenv("LEGACY_TIMESTAMPS", "").strip().lower()
+    if setting in ("utc", "local"):
+        return setting == "utc"
+    return Path("/.dockerenv").exists()
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     started_at = datetime.now()
     logging.basicConfig(level=logging.INFO)
@@ -112,7 +126,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     try:
         db.open(
             MigrationContext(legacy_log_dir=legacy_dir,
-                             devices={d.name: (d.power_consumption, d.priority) for d in store.all()}),
+                             devices={d.name: (d.power_consumption, d.priority) for d in store.all()},
+                             legacy_timestamps_utc=legacy_timestamps_utc()),
             started_at,
         )
         db.refresh_hourly()

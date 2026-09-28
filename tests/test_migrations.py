@@ -214,3 +214,40 @@ def test_failed_migration_is_rolled_back(legacy, monkeypatch):
     monkeypatch.undo()
     db = open_db(legacy, datetime.now())
     assert query(db, "SELECT COUNT(*) FROM solar_data")[0][0] == 4
+
+
+@pytest.fixture
+def berlin(monkeypatch):
+    import time as _time
+    monkeypatch.setenv("TZ", "Europe/Berlin")
+    _time.tzset()
+    yield
+    monkeypatch.undo()
+    _time.tzset()
+
+
+def test_utc_timestamps_of_the_old_docker_image_become_local_time(legacy, berlin):
+    conn = sqlite3.connect(legacy / "Datalogs" / "solar_energy.db")
+    conn.executemany(
+        "INSERT INTO solar_data (timestamp, pv_power, grid_power, battery_power, load_power, battery_soc, "
+        "feed_in_power, grid_consumption, self_consumption, autarky_rate, surplus_power) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [legacy_solar("2026-06-21 11:30:00", 8000.0, -5000.0, 0.0, 3000.0, 100.0),   # Sommerzeit +2
+         legacy_solar("2026-10-25 00:30:00", 0.0, 100.0, 0.0, 100.0, 50.0),         # 02:30 Sommerzeit
+         legacy_solar("2026-10-25 01:30:00", 0.0, 200.0, 0.0, 200.0, 50.0)])        # 02:30 Winterzeit
+    conn.commit()
+    conn.close()
+
+    db = Database(legacy / "Datalogs" / "solar_energy.db")
+    db.open(MigrationContext(legacy_log_dir=legacy / "Datalogs", legacy_timestamps_utc=True), datetime.now())
+
+    rows = dict(query(db, "SELECT timestamp, grid_power FROM solar_data"))
+    assert "2026-01-10 13:00:00" in rows and "2026-01-10 12:00:00" not in rows  # Winterzeit +1
+    assert rows["2026-06-21 13:30:00"] == -5000
+    assert rows["2026-10-25 02:30:00"] == 100  # doppelte Stunde: der erste Messwert bleibt
+    assert db.events(until=datetime(2026, 1, 11))[0]["timestamp"] == "2026-01-10 13:00:30"
+
+
+def test_local_timestamps_stay_untouched(legacy, berlin):
+    db = open_db(legacy, datetime.now())
+    assert query(db, "SELECT MIN(timestamp) FROM solar_data")[0][0] == "2026-01-10 12:00:00"
