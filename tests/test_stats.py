@@ -163,3 +163,13 @@ def test_all_time_series_includes_the_first_partial_month(config, db):
     assert [s["label"] for s in stats["series"]] == ["Nov 25", "Dez 25", "Jan 26"]
     assert [s["pv"] for s in stats["series"]] == pytest.approx([1.0, 2.0, 0.0])
     assert sum(s["pv"] for s in stats["series"]) == pytest.approx(stats["energy"]["pv"])
+
+
+def test_database_in_a_path_with_spaces_and_hash(tmp_path):
+    from solarflow.database import Database
+    from solarflow.migrations import MigrationContext
+
+    db = Database(tmp_path / "Mein Ordner #1" / "solarflow.db")
+    db.open(MigrationContext(), datetime.now())
+    db.insert_sample(sample(DAY, pv=100))
+    assert db.first_sample_time() == DAY

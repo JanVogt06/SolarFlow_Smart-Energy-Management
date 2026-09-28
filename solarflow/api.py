@@ -5,6 +5,7 @@ REST-API und Auslieferung des Web-Dashboards.
 import logging
 import sys
 import threading
+import time
 from datetime import date, datetime
 from pathlib import Path
 from typing import List, Literal, Optional
@@ -163,8 +164,7 @@ def create_app(monitor: Monitor) -> FastAPI:
             "runtime_today": int(device.runtime_today(now) // 60),
             "manual_remaining": int((device.manual_until - now).total_seconds()) if device.is_manual(now) else None,
             "hysteresis_remaining": waiting,
-            "hint": controller.unreachable_reason(device) if device.state == DeviceState.UNREACHABLE
-            else controller.hints.get(device.name),
+            "hint": controller.unreachable_reason(device) or controller.hints.get(device.name),
         }
 
     @app.get("/api/devices")
@@ -191,9 +191,9 @@ def create_app(monitor: Monitor) -> FastAPI:
     @app.post("/api/devices/{name}/switch")
     def switch(name: str, request: SwitchRequest):
         device = require(name)
-        if device.state == DeviceState.UNREACHABLE:
-            raise HTTPException(status_code=409, detail=controller.unreachable_reason(device)
-                                or f"'{name}' ist nicht erreichbar")
+        reason = controller.unreachable_reason(device)
+        if reason:
+            raise HTTPException(status_code=409, detail=reason)
         if not controller.switch_manually(name, request.on):
             raise HTTPException(status_code=502, detail="Die Hue Bridge hat den Schaltbefehl nicht angenommen")
         return {"message": f"'{name}' {'eingeschaltet' if request.on else 'ausgeschaltet'}",
@@ -264,8 +264,19 @@ class APIServer:
         ))
         self.thread = threading.Thread(target=self.server.run, name="api", daemon=True)
 
-    def start(self) -> None:
+    def start(self, timeout: float = 10.0) -> None:
+        """
+        Startet den Server und wartet, bis er Anfragen annimmt.
+
+        Raises:
+            RuntimeError: wenn der Server nicht hochkommt (z.B. Port belegt)
+        """
         self.thread.start()
+        deadline = time.monotonic() + timeout
+        while not self.server.started:
+            if not self.thread.is_alive() or time.monotonic() > deadline:
+                raise RuntimeError(f"Dashboard-Server konnte Port {self.server.config.port} nicht öffnen")
+            time.sleep(0.05)
 
     def stop(self) -> None:
         self.server.should_exit = True

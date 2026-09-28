@@ -47,15 +47,15 @@ class LiveDisplay:
         power = Table.grid(padding=(0, 2))
         power.add_column(style="cyan")
         power.add_column(justify="right")
-        power.add_row("PV-Erzeugung", f"{data.pv_power:,.0f} W")
-        power.add_row("Hausverbrauch", f"{data.load_power:,.0f} W")
+        power.add_row("PV-Erzeugung", _watts(data.pv_power))
+        power.add_row("Hausverbrauch", _watts(data.load_power))
         if data.grid_power < 0:
-            power.add_row("Einspeisung", f"[green]{data.feed_in_power:,.0f} W[/]")
+            power.add_row("Einspeisung", f"[green]{_watts(data.feed_in_power)}[/]")
         else:
-            power.add_row("Netzbezug", f"[red]{data.grid_consumption:,.0f} W[/]")
+            power.add_row("Netzbezug", f"[red]{_watts(data.grid_consumption)}[/]")
         if data.has_battery:
             direction = "lädt" if data.battery_charging else "entlädt"
-            power.add_row("Akku", f"{data.battery_soc:.0f} % ({direction} {abs(data.battery_power):,.0f} W)")
+            power.add_row("Akku", f"{data.battery_soc:.0f} % ({direction} {_watts(abs(data.battery_power))})")
         power.add_row("Autarkie", f"{data.autarky_rate:.0f} %")
 
         today = build_statistics(monitor.db, monitor.config, "day")
@@ -90,6 +90,10 @@ class LiveDisplay:
             subtitle=f"Dashboard: http://localhost:{monitor.config.port}",
             border_style="blue",
         )
+
+
+def _watts(value: float) -> str:
+    return f"{value:,.0f} W".replace(",", ".")
 
 
 def _side_by_side(left: Table, right: Table) -> Table:

@@ -103,7 +103,8 @@ export class DevicesController {
             const name = escapeHtml(d.name);
             const manual = d.manual_remaining;
             const status = manual ? (d.state === 'on' ? 'MANUELL EIN' : 'MANUELL AUS') : STATUS_TEXT[d.state] || d.state;
-            const note = d.state === 'unreachable' ? ['plug-zap', 'device-warning', d.hint]
+            const controllable = d.state !== 'unreachable' && this.hue.enabled && this.hue.connected;
+            const note = !controllable ? ['plug-zap', 'device-warning', d.hint]
                 : manual ? ['hand', 'device-manual', `Automatik pausiert noch ${formatCountdown(manual)}`]
                 : d.hysteresis_remaining ? ['timer', 'device-hysteresis', `Wartet noch ${formatCountdown(d.hysteresis_remaining)}`]
                 : d.hint ? ['info', 'device-hint', d.hint] : null;
@@ -144,7 +145,7 @@ export class DevicesController {
 
                 <div class="device-actions">
                     <button class="btn btn-secondary btn-small" data-action="toggle" data-device="${name}"
-                            ${d.state === 'unreachable' ? 'disabled' : ''}>
+                            ${controllable ? '' : 'disabled'}>
                         <i data-lucide="power"></i> ${d.state === 'on' ? 'Ausschalten' : 'Einschalten'}
                     </button>
                     ${manual ? `<button class="btn btn-secondary btn-small" data-action="auto" data-device="${name}">

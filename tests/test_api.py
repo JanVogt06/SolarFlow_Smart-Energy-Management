@@ -147,3 +147,26 @@ def test_stats_csv_export(app):
     lines = response.text.strip().split("\n")
     assert lines[0].startswith("Beginn;PV (kWh)")
     assert all(line.count(";") == 8 for line in lines)
+
+
+def test_switching_is_refused_while_hue_is_disabled(app, config):
+    assert app.put("/api/settings", json={"enable_hue": False}).status_code == 200
+    response = app.post("/api/devices/Heizung/switch", json={"on": True})
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Hue-Steuerung ist deaktiviert"
+    assert app.get("/api/devices").json()["devices"][0]["hint"] == "Hue-Steuerung ist deaktiviert"
+
+
+def test_live_display_renders(app):
+    from rich.console import Console
+    from solarflow.live_display import LiveDisplay
+
+    tick(app, pv=5000, grid=-2500, load=2500, battery=-100, soc=80)
+    display = LiveDisplay()
+    console = Console(record=True, width=120)
+    console.print(display._render(app.monitor, app.monitor.latest))
+    text = console.export_text()
+
+    assert "PV-Erzeugung" in text and "5.000 W" in text
+    assert "Heizung" in text and "EIN" in text
+    assert "Hue verbunden" in text

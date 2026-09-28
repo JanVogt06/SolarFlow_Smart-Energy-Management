@@ -129,7 +129,7 @@ class Database:
             self._conn.commit()
 
     def _read(self, sql: str, params: Any = ()) -> List[tuple]:
-        conn = sqlite3.connect(f"file:{self.path}?mode=ro", uri=True, timeout=30)
+        conn = sqlite3.connect(f"{self.path.resolve().as_uri()}?mode=ro", uri=True, timeout=30)
         try:
             return conn.execute(sql, params).fetchall()
         finally:

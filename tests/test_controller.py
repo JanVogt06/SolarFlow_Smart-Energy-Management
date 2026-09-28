@@ -364,3 +364,14 @@ def test_data_loss_switches_automatic_devices_off(config, controller, store, bri
     monitor.tick(T0 + timedelta(minutes=3))
     assert store.get("Auto").state == DeviceState.OFF
     assert store.get("Hand").state == DeviceState.ON
+
+
+def test_day_rolls_over_even_without_solar_data(controller, store, bridge):
+    setup_devices(controller, store, bridge, make_device("A"))
+    controller.cycle(export(2000, T0))
+    controller.cycle(sample(T0 + timedelta(hours=1), grid=500, load=1500))  # aus nach 1 h
+    assert store.get("A").runtime_today_seconds == pytest.approx(3600)
+
+    with controller.lock:
+        controller.sync(T0 + timedelta(days=1))
+    assert store.get("A").runtime_today_seconds == 0

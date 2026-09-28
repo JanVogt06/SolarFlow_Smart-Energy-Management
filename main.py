@@ -122,7 +122,12 @@ def main(argv: Optional[List[str]] = None) -> int:
     monitor = Monitor(config, SettingsStore(config), db, controller, FroniusClient(config.fronius_ip))
 
     server = APIServer(monitor, config.port)
-    server.start()
+    try:
+        server.start()
+    except RuntimeError as e:
+        logger.error(f"{e} - läuft SolarFlow schon oder ist der Port belegt?")
+        db.close()
+        return 1
     logger.info(f"Dashboard: http://localhost:{config.port}  ·  API: http://localhost:{config.port}/docs")
 
     def request_stop(signum, frame):

@@ -182,6 +182,7 @@ class EnergyController:
 
     def sync(self, now: datetime) -> None:
         """Übernimmt Schaltzustand und Erreichbarkeit von der Bridge."""
+        self._roll_day(now)
         bridge = self.bridge
         if bridge is None:
             # Ohne Steuerung weiß niemand, ob ein Gerät noch läuft
@@ -255,7 +256,7 @@ class EnergyController:
         now = now or datetime.now()
         with self.lock:
             device = self.store.get(name)
-            if device is None or device.state == DeviceState.UNREACHABLE:
+            if device is None or self.unreachable_reason(device):
                 return False
             if not self._switch(device, on, now, "manuell im Dashboard"):
                 return False
@@ -288,7 +289,6 @@ class EnergyController:
         """Ein Steuerzyklus: Tageswechsel, Abgleich mit der Bridge, Entscheidung."""
         now = data.timestamp
         with self.lock:
-            self._roll_day(now)
             self._last_surplus = -data.grid_power
             self.sync(now)
             self.decide(data, now)
