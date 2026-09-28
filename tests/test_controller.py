@@ -375,3 +375,53 @@ def test_day_rolls_over_even_without_solar_data(controller, store, bridge):
     with controller.lock:
         controller.sync(T0 + timedelta(days=1))
     assert store.get("A").runtime_today_seconds == 0
+
+
+def test_device_added_at_runtime_adopts_a_running_plug_silently(controller, store, bridge):
+    setup_devices(controller, store, bridge, make_device("A"))
+    controller.cycle(export(0, T0))
+
+    store.add(make_device("Neu"))
+    bridge.add("Neu", on=True)
+    controller.track("Neu")
+    controller.cycle(sample(T0 + timedelta(seconds=5), grid=300, load=1300))
+
+    assert store.get("Neu").manual_until is None
+    assert store.get("Neu").state == DeviceState.OFF  # Automatik darf ihn sofort abschalten
+
+
+def test_crash_while_running_counts_runtime_only_until_the_last_sample(controller, store, bridge, db):
+    setup_devices(controller, store, bridge, make_device("A"))
+    day = datetime(2026, 6, 1)
+    db.insert_event(day.replace(hour=9), "A", "eingeschaltet", "off", "on", "", 0, 1000, 5, 0)
+    db.insert_sample(sample(day.replace(hour=10), pv=2000))  # danach Absturz
+
+    controller.restore(day.replace(hour=14))  # Hue zeigt den Stecker jetzt aus
+    controller.cycle(export(0, day.replace(hour=14)))
+
+    device = store.get("A")
+    assert device.state == DeviceState.OFF
+    assert device.runtime_today(day.replace(hour=14)) == pytest.approx(3600)
+    assert db.recent_events(1)[0]["reason"] == "beim Neustart aus vorgefunden"
+
+
+def test_reachable_again_does_not_start_the_hysteresis(controller, store, bridge, db):
+    setup_devices(controller, store, bridge, make_device("A"))
+    db.insert_event(T0 - timedelta(minutes=1), "A", "wieder erreichbar", "unreachable", "off", "", 0, 1000, 5, 0)
+    controller.restore(T0)
+    assert store.get("A").last_switch_off is None
+
+
+def test_bridge_is_queried_without_holding_the_lock(controller, store, bridge):
+    setup_devices(controller, store, bridge, make_device("A"))
+    held = []
+    original = bridge.refresh
+
+    def spy():
+        held.append(controller.lock._is_owned())
+        return original()
+
+    bridge.refresh = spy
+    controller.cycle(export(0, T0))
+    controller.sync(T0)
+    assert held == [False, False]

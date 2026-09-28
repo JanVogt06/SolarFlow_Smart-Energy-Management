@@ -17,6 +17,8 @@ logger = logging.getLogger(__name__)
 
 # Ohne frische Messwerte weiß die Automatik nicht, ob noch Überschuss da ist
 DATA_LOSS_TIMEOUT = timedelta(minutes=2)
+# So lange muss eine migrierte Datenbank fehlerfrei laufen, bevor Altdateien weg dürfen
+HEALTHY_AFTER = timedelta(minutes=10)
 
 
 class Monitor:
@@ -33,6 +35,8 @@ class Monitor:
         self.latest: Optional[SolarData] = None
         self.on_update: Optional[Callable[[Optional[SolarData]], None]] = None
         self._last_data_at: Optional[datetime] = None
+        self._first_data_at: Optional[datetime] = None
+        self._healthy = False
         self._data_lost = False
         self._stop = threading.Event()
 
@@ -57,8 +61,7 @@ class Monitor:
 
         if data is None:
             # Geräteansicht trotzdem aktuell halten (z.B. extern geschaltet)
-            with self.controller.lock:
-                self.controller.sync(now)
+            self.controller.sync(now)
             self._handle_data_loss(now)
         else:
             self.latest = data
@@ -68,10 +71,22 @@ class Monitor:
                 self._data_lost = False
             self.db.insert_sample(data)
             self.controller.cycle(data)
+            self._confirm_health(now)
 
         self.db.refresh_hourly(now)
         if self.on_update:
             self.on_update(data)
+
+    def _confirm_health(self, now: datetime) -> None:
+        """Nach zehn fehlerfreien Minuten dürfen übernommene Altdateien weg."""
+        if self._healthy:
+            return
+        self._first_data_at = self._first_data_at or now
+        if now - self._first_data_at < HEALTHY_AFTER:
+            return
+        self._healthy = True
+        if self.db.confirm_legacy_cleanup():
+            logger.info("Datenbank läuft - übernommene CSV-Logs und Backup werden beim nächsten Start gelöscht")
 
     def _handle_data_loss(self, now: datetime) -> None:
         if self._data_lost or self._last_data_at is None or now - self._last_data_at < DATA_LOSS_TIMEOUT:

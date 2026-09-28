@@ -12,7 +12,7 @@ export class StatisticsController {
         this.period = 'day';
         this.ref = null;
         this.active = false;
-        this.loading = false;
+        this.request = 0;
 
         this.periodButtons = document.querySelectorAll('#period-select button');
         this.prev = document.getElementById('period-prev');
@@ -52,14 +52,14 @@ export class StatisticsController {
     }
 
     async load(quiet = false) {
-        if (this.loading) return;
-        this.loading = true;
+        // Nur die jüngste Anfrage darf zeichnen - sonst überschreibt eine langsame
+        // Hintergrundaktualisierung den gerade angeklickten Zeitraum
+        const request = ++this.request;
         try {
-            this.render(await this.api.stats(this.period, this.ref));
+            const stats = await this.api.stats(this.period, this.ref);
+            if (request === this.request) this.render(stats);
         } catch (error) {
-            if (!quiet) showNotification(error.message, 'error');
-        } finally {
-            this.loading = false;
+            if (!quiet && request === this.request) showNotification(error.message, 'error');
         }
     }
 

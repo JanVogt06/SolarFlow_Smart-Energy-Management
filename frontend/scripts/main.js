@@ -26,6 +26,7 @@ class SolarFlowApp {
         });
 
         refreshIcons();
+        this.loadServerInfo();
         this.start();
         document.addEventListener('visibilitychange', () => document.hidden ? this.stop() : this.start());
     }
@@ -34,17 +35,21 @@ class SolarFlowApp {
         return { devices: this.devices, statistics: this.statistics, settings: this.settings }[tab];
     }
 
-    async start() {
-        if (this.timer) return;
+    async loadServerInfo() {
         try {
             const [status, settings] = await Promise.all([this.api.status(), this.api.settings()]);
             setText('app-version', `SolarFlow ${status.version}`);
-            this.interval = Math.max(settings.update_interval, 2) * 1000;
+            this.setInterval(settings.update_interval);
         } catch {
-            // Der erste Update-Zyklus meldet die Störung
+            // Der Update-Zyklus meldet die Störung
         }
-        await this.update();
+    }
+
+    // Synchron, damit schnelles Aus-/Einblenden keine doppelten Timer erzeugt
+    start() {
+        if (this.timer || document.hidden) return;
         this.timer = setInterval(() => this.update(), this.interval);
+        this.update();
     }
 
     stop() {
@@ -54,8 +59,10 @@ class SolarFlowApp {
 
     setInterval(seconds) {
         this.interval = Math.max(seconds, 2) * 1000;
-        this.stop();
-        this.start();
+        if (this.timer) {
+            this.stop();
+            this.start();
+        }
     }
 
     async update() {

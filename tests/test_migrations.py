@@ -1,7 +1,5 @@
 import json
-import os
 import sqlite3
-import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -71,6 +69,7 @@ def legacy(tmp_path: Path):
         [("2026-01-10 12:00:25", 2500, status("0", "0")),
          ("2026-01-10 12:00:35", 500, status("1", "0")),   # Heizung ein - Ereignis vorhanden
          ("2026-01-10 12:10:00", 700, status("1", "1")),   # Entfeuchter ein - kein Ereignis (Hue-App)
+         ("2026-01-10 12:10:30", 700, status("1", "1")),   # letzter Snapshot vor der Lücke
          ("2026-01-10 18:00:00", 0, status("0", "0"))])    # beide aus nach Lücke - kein Ereignis
     conn.commit()
     conn.close()
@@ -142,28 +141,33 @@ def test_events_are_merged_and_completed_from_status_snapshots(legacy):
     assert events == [
         ("2026-01-10 12:00:30", "Heizkörper Jan", "on"),      # bestand schon
         ("2026-01-10 12:10:00", "Entfeuchter (neu)", "on"),   # aus device_status nachgetragen
-        ("2026-01-10 13:00:00", "Heizkörper Jan", "off"),     # aus der CSV
-        ("2026-01-10 18:00:00", "Entfeuchter (neu)", "off"),  # nachgetragen, Heizung hatte ein Ereignis
+        # nachgetragen mit dem letzten Snapshot vor der Lücke, nicht dem Neustart um 18 Uhr
+        ("2026-01-10 12:10:30", "Entfeuchter (neu)", "off"),
+        ("2026-01-10 13:00:00", "Heizkörper Jan", "off"),     # aus der CSV; Heizung braucht nichts
     ]
     reconstructed = db.events(until=datetime(2026, 1, 11), since=datetime(2026, 1, 10, 12, 10))[0]
     assert reconstructed["device_power"] == 200
     assert "Statusprotokoll" in reconstructed["reason"]
 
 
-def test_legacy_files_are_removed_on_the_next_start(legacy):
+def test_legacy_files_are_removed_only_after_a_confirmed_run(legacy):
     first_start = datetime.now()
     db = open_db(legacy, first_start)
     db.close()
-
-    # Erst nach dem nächsten Start wird aufgeräumt
-    assert (legacy / "Datalogs" / "Solardata" / "solar_data_20260110.csv").exists()
     backups = list((legacy / "Datalogs").glob("solar_energy.db.v0.*.bak"))
     assert len(backups) == 1
 
-    past = time.time() - 60
-    os.utime(backups[0], (past, past))
+    # Der erste Lauf stürzt ab, bevor er bestätigt wurde: nichts wird gelöscht
     db = open_db(legacy, first_start + timedelta(minutes=1))
+    assert (legacy / "Datalogs" / "Solardata" / "solar_data_20260110.csv").exists()
+    assert backups[0].exists()
 
+    # Dieser Lauf läuft fehlerfrei und gibt frei - gelöscht wird erst beim nächsten Start
+    assert db.confirm_legacy_cleanup() == 6
+    assert (legacy / "Datalogs" / "Solardata" / "solar_data_20260110.csv").exists()
+    db.close()
+
+    db = open_db(legacy, datetime.now() + timedelta(minutes=2))
     assert sorted(p.name for p in (legacy / "Datalogs").iterdir() if not p.name.endswith(("-wal", "-shm"))) \
         == ["solar_energy.db"]
     assert not backups[0].exists()
@@ -173,7 +177,9 @@ def test_legacy_files_are_removed_on_the_next_start(legacy):
 
 def test_unknown_files_keep_their_folder(legacy):
     (legacy / "Datalogs" / "notizen.md").write_text("meins")
-    open_db(legacy, datetime.now()).close()
+    db = open_db(legacy, datetime.now())
+    db.confirm_legacy_cleanup()
+    db.close()
     open_db(legacy, datetime.now() + timedelta(seconds=1))
 
     assert (legacy / "Datalogs" / "notizen.md").exists()

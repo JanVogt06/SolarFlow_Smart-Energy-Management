@@ -188,7 +188,7 @@ def create_app(monitor: Monitor) -> FastAPI:
             raise HTTPException(status_code=404, detail=f"Gerät '{name}' nicht gefunden")
         return device
 
-    @app.post("/api/devices/{name}/switch")
+    @app.post("/api/devices/{name:path}/switch")
     def switch(name: str, request: SwitchRequest):
         device = require(name)
         reason = controller.unreachable_reason(device)
@@ -199,7 +199,7 @@ def create_app(monitor: Monitor) -> FastAPI:
         return {"message": f"'{name}' {'eingeschaltet' if request.on else 'ausgeschaltet'}",
                 "state": device.state.value}
 
-    @app.delete("/api/devices/{name}/manual")
+    @app.delete("/api/devices/{name:path}/manual")
     def release_manual(name: str):
         require(name)
         controller.release_manual(name)
@@ -216,9 +216,10 @@ def create_app(monitor: Monitor) -> FastAPI:
             if not store.save():
                 store.remove(device.name)
                 raise HTTPException(status_code=500, detail="devices.json konnte nicht geschrieben werden")
+            controller.track(device.name)
         return {"message": f"Gerät '{device.name}' angelegt"}
 
-    @app.put("/api/devices/{name}")
+    @app.put("/api/devices/{name:path}")
     def update_device(name: str, payload: DeviceIn):
         old = require(name)
         device = payload.to_device()
@@ -232,9 +233,11 @@ def create_app(monitor: Monitor) -> FastAPI:
             if not store.save():
                 store.replace(device.name, old)
                 raise HTTPException(status_code=500, detail="devices.json konnte nicht geschrieben werden")
+            if device.name != name:
+                controller.track(device.name)
         return {"message": f"Gerät '{device.name}' gespeichert"}
 
-    @app.delete("/api/devices/{name}")
+    @app.delete("/api/devices/{name:path}")
     def delete_device(name: str):
         device = require(name)
         with controller.lock:

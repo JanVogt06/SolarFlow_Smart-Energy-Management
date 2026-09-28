@@ -56,6 +56,7 @@ class EnergyController:
         self.hints: Dict[str, str] = {}
         self._pending: Dict[str, Tuple[datetime, bool]] = {}
         self._unconfirmed: Set[str] = set()
+        self._last_seen: Optional[datetime] = None
         self._day = datetime.now().date()
         self._last_surplus: Optional[float] = None
 
@@ -123,13 +124,16 @@ class EnergyController:
             if previous and previous[1] == "on" and state != "on":
                 seconds = (moment - max(previous[0], day_start)).total_seconds()
                 closed[name] = closed.get(name, 0.0) + max(seconds, 0.0)
-            if state == "off":
+            # "wieder erreichbar" ist kein Ausschalten und startet keine Wartezeit
+            if state == "off" and previous and previous[1] == "on":
                 last_off[name] = moment
             if not (previous and previous[1] == "on" and state == "on"):
                 last[name] = (moment, state)
 
         with self.lock:
             self._day = now.date()
+            # Bis hierhin lief das Programm zuletzt nachweislich
+            self._last_seen = self.db.last_sample_time()
             for device in self.store.all():
                 moment, state = last.get(device.name, (None, "off"))
                 device.runtime_today_seconds = closed.get(device.name, 0.0)
@@ -170,6 +174,11 @@ class EnergyController:
         except Exception as e:
             logger.error(f"Schaltereignis für '{device.name}' nicht gespeichert: {e}")
 
+    def track(self, name: str) -> None:
+        """Ein neu angelegtes Gerät übernimmt beim ersten Abgleich still den Hue-Zustand."""
+        with self.lock:
+            self._unconfirmed.add(name)
+
     def _roll_day(self, now: datetime) -> None:
         if now.date() == self._day:
             return
@@ -182,8 +191,17 @@ class EnergyController:
 
     def sync(self, now: datetime) -> None:
         """Übernimmt Schaltzustand und Erreichbarkeit von der Bridge."""
-        self._roll_day(now)
         bridge = self.bridge
+        # Netzwerkzugriff ohne die Sperre - das Dashboard soll nicht auf die Bridge warten
+        answered = bridge.refresh() if bridge is not None else False
+        with self.lock:
+            self._apply_sync(now, bridge, answered)
+
+    def _apply_sync(self, now: datetime, bridge: Optional[HueBridge], answered: bool) -> None:
+        self._roll_day(now)
+        if bridge is not self.bridge:
+            return  # Bridge wurde währenddessen umkonfiguriert
+
         if bridge is None:
             # Ohne Steuerung weiß niemand, ob ein Gerät noch läuft
             for device in self.store.all():
@@ -191,7 +209,7 @@ class EnergyController:
                     self._set_state(device, DeviceState.UNREACHABLE, now, "Hue-Steuerung deaktiviert")
             return
 
-        if not bridge.refresh():
+        if not answered:
             if bridge.failures < HueBridge.DOWN_AFTER:
                 return  # kurzer Aussetzer: Zustände halten, aber nicht schalten
             for device in self.store.all():
@@ -209,17 +227,22 @@ class EnergyController:
                 continue
 
             is_on = device.state == DeviceState.ON
-            silent = device.state == DeviceState.UNREACHABLE or device.name in self._unconfirmed
+            unconfirmed = device.name in self._unconfirmed
+            silent = device.state == DeviceState.UNREACHABLE or unconfirmed
             self._unconfirmed.discard(device.name)
             if light.on == is_on and device.state != DeviceState.UNREACHABLE:
                 continue
 
             target = DeviceState.ON if light.on else DeviceState.OFF
-            if silent:
-                self._set_state(device, target, now, "Zustand von Hue übernommen")
-            else:
+            if not silent:
                 self._set_state(device, target, now, "extern geschaltet (z.B. Hue-App)")
                 self._start_manual(device, now)
+            elif unconfirmed and is_on and self._last_seen and device.on_since and self._last_seen > device.on_since:
+                # Nach einem Absturz: wann das Gerät ausging, weiß niemand - spätestens
+                # beim letzten Messwert des vorigen Laufs lief das Programm noch
+                self._set_state(device, target, min(self._last_seen, now), "beim Neustart aus vorgefunden")
+            else:
+                self._set_state(device, target, now, "Zustand von Hue übernommen")
 
     def _settling(self, name: str, hw_on: bool, now: datetime) -> bool:
         """True solange die Bridge einen eigenen Schaltbefehl noch nicht anzeigt."""
@@ -288,9 +311,11 @@ class EnergyController:
     def cycle(self, data: SolarData) -> None:
         """Ein Steuerzyklus: Tageswechsel, Abgleich mit der Bridge, Entscheidung."""
         now = data.timestamp
+        bridge = self.bridge
+        answered = bridge.refresh() if bridge is not None else False
         with self.lock:
             self._last_surplus = -data.grid_power
-            self.sync(now)
+            self._apply_sync(now, bridge, answered)
             self.decide(data, now)
 
     def decide(self, data: SolarData, now: datetime) -> None:

@@ -9,9 +9,10 @@ wird die Datenbank gesichert.
 Neue Migration hinzufügen: Funktion schreiben und unten in MIGRATIONS mit der
 nächsten freien Nummer eintragen. Bestehende Schritte werden nie geändert.
 
-Aufgeräumt wird immer erst beim nächsten Start: die übernommenen CSV-Logs und
-das Backup bleiben liegen, bis die migrierte Datenbank einmal erfolgreich
-gelaufen ist (siehe `cleanup_legacy_files`).
+Aufgeräumt wird erst, wenn die migrierte Datenbank nachweislich funktioniert:
+die übernommenen CSV-Logs und das Backup stehen in legacy_files, der Monitor
+bestätigt sie nach einigen Minuten fehlerfreien Betriebs, und der nächste Start
+löscht sie (siehe `cleanup_legacy_files`).
 """
 
 import bisect
@@ -230,8 +231,8 @@ def _migration_004_import_legacy_csv(conn: sqlite3.Connection, ctx: MigrationCon
 
     Tagesstatistiken, Status-Snapshots und Tageszusammenfassungen werden nicht
     übernommen - sie lassen sich aus Messwerten und Schaltereignissen neu
-    berechnen. Alle Dateien landen in legacy_files und werden beim nächsten
-    Start gelöscht.
+    berechnen. Alle Dateien landen in legacy_files und werden gelöscht, sobald
+    die neue Version einmal fehlerfrei gelaufen ist.
     """
     conn.execute("""
         CREATE TABLE legacy_files (
@@ -239,7 +240,8 @@ def _migration_004_import_legacy_csv(conn: sqlite3.Connection, ctx: MigrationCon
             kind TEXT NOT NULL,
             rows_read INTEGER NOT NULL DEFAULT 0,
             rows_added INTEGER NOT NULL DEFAULT 0,
-            imported_at TEXT NOT NULL
+            imported_at TEXT NOT NULL,
+            confirmed_at TEXT
         )
     """)
 
@@ -291,7 +293,7 @@ def _migration_004_import_legacy_csv(conn: sqlite3.Connection, ctx: MigrationCon
         if kind in totals:
             totals[kind][0] += read
             totals[kind][1] += added
-        conn.execute("INSERT INTO legacy_files VALUES (?, ?, ?, ?, ?)",
+        conn.execute("INSERT INTO legacy_files VALUES (?, ?, ?, ?, ?, NULL)",
                      (str(path.resolve()), kind, read, added, imported_at))
 
     logger.info(
@@ -366,13 +368,18 @@ def _migration_005_events_from_status(conn: sqlite3.Connection, ctx: MigrationCo
             if has_event(name, on, since, now):
                 continue
 
+            # Nach einer Lücke (Programm lief nicht) ist ein Gerät spätestens mit dem
+            # letzten Snapshot ausgegangen - sonst zählte die ganze Lücke als Laufzeit
+            gap = (now - since).total_seconds() > 90
+            stamp = since.strftime("%Y-%m-%d %H:%M:%S") if gap and not on else timestamp
+
             power, priority = last_known.get(name, (0.0, 5))
             runtime = states.get(f"{device_key}_runtime")
             conn.execute(
                 "INSERT INTO device_events (timestamp, device_name, action, old_state, new_state, "
                 "reason, surplus_power, device_power, priority, runtime_today) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (timestamp, name, "eingeschaltet" if on else "ausgeschaltet",
+                (stamp, name, "eingeschaltet" if on else "ausgeschaltet",
                  None if previous is None else ("on" if previous[0] else "off"),
                  "on" if on else "off",
                  "Nachgetragen aus dem Statusprotokoll (extern oder beim Neustart geschaltet)",
@@ -470,7 +477,7 @@ def apply_migrations(conn: sqlite3.Connection, db_path: Path, ctx: MigrationCont
         return current
 
     logger.info(f"Migriere Datenbank von Version {current} auf {target} - das kann einige Minuten dauern")
-    backup_database(conn, db_path, current)
+    backup = backup_database(conn, db_path, current)
 
     for version, description, migrate in MIGRATIONS:
         if version <= current:
@@ -491,6 +498,12 @@ def apply_migrations(conn: sqlite3.Connection, db_path: Path, ctx: MigrationCont
             raise
         current = version
 
+    if backup is not None:
+        # Erst nach einem erfolgreichen Lauf entbehrlich - wie die CSV-Logs
+        conn.execute("INSERT OR REPLACE INTO legacy_files VALUES (?, 'backup', 0, 0, ?, NULL)",
+                     (str(backup.resolve()), datetime.now().isoformat()))
+        conn.commit()
+
     _reclaim_space(conn)
     logger.info(f"Datenbank auf Version {current}")
     return current
@@ -508,33 +521,49 @@ def _reclaim_space(conn: sqlite3.Connection) -> None:
     conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
 
 
+def confirm_legacy_cleanup(conn: sqlite3.Connection) -> int:
+    """
+    Gibt übernommene CSV-Logs und Backups zum Löschen frei - aufgerufen, sobald
+    die migrierte Datenbank eine Weile fehlerfrei gelaufen ist.
+
+    Returns:
+        Anzahl freigegebener Dateien
+    """
+    count = conn.execute(
+        "UPDATE legacy_files SET confirmed_at = ? WHERE confirmed_at IS NULL",
+        (datetime.now().isoformat(),)
+    ).rowcount
+    conn.commit()
+    return count
+
+
 def cleanup_legacy_files(conn: sqlite3.Connection, db_path: Path, legacy_log_dir: Optional[Path],
                          started_at: datetime) -> None:
     """
-    Löscht übernommene CSV-Logs und Backups aus einem früheren Start.
+    Löscht CSV-Logs und Backups, die ein früherer Lauf freigegeben hat.
 
-    Was in diesem Lauf importiert oder gesichert wurde, bleibt liegen: erst
-    wenn die migrierte Datenbank einen Start überstanden hat, ist die alte
-    Ablage entbehrlich.
+    Freigegeben wird erst nach fehlerfreiem Betrieb (confirm_legacy_cleanup).
+    Stürzt die neue Version gleich nach der Migration ab, bleibt alles liegen.
     """
-    if conn.execute("SELECT 1 FROM sqlite_master WHERE name = 'legacy_files'").fetchone():
-        cutoff = started_at.isoformat()
-        stale = conn.execute("SELECT path FROM legacy_files WHERE imported_at < ?", (cutoff,)).fetchall()
-        for (path,) in stale:
-            Path(path).unlink(missing_ok=True)
-        if stale:
-            conn.execute("DELETE FROM legacy_files WHERE imported_at < ?", (cutoff,))
-            conn.commit()
-            logger.info(f"{len(stale)} übernommene CSV-Logs gelöscht")
+    if not conn.execute("SELECT 1 FROM sqlite_master WHERE name = 'legacy_files'").fetchone():
+        return
+
+    cutoff = started_at.isoformat()
+    confirmed = conn.execute(
+        "SELECT path, kind FROM legacy_files WHERE confirmed_at IS NOT NULL AND confirmed_at < ?", (cutoff,)
+    ).fetchall()
+    for path, kind in confirmed:
+        Path(path).unlink(missing_ok=True)
+        if kind == "backup":
+            logger.info(f"Backup {Path(path).name} gelöscht - die migrierte Datenbank läuft")
+    if confirmed:
+        conn.execute("DELETE FROM legacy_files WHERE confirmed_at IS NOT NULL AND confirmed_at < ?", (cutoff,))
+        conn.commit()
+        logger.info(f"{sum(k != 'backup' for _, k in confirmed)} übernommene CSV-Logs gelöscht")
 
     if legacy_log_dir and legacy_log_dir.is_dir():
         for folder in [legacy_log_dir / sub for sub in LEGACY_SUBDIRS] + [legacy_log_dir]:
             _remove_if_empty(folder)
-
-    for backup in db_path.parent.glob(f"{db_path.name}.v*.bak"):
-        if datetime.fromtimestamp(backup.stat().st_mtime) < started_at:
-            backup.unlink(missing_ok=True)
-            logger.info(f"Backup {backup.name} gelöscht - die migrierte Datenbank läuft")
 
 
 def _remove_if_empty(folder: Path) -> None:

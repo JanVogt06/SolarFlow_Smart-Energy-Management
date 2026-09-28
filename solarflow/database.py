@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .fronius import SolarData
-from .migrations import MigrationContext, apply_migrations, cleanup_legacy_files
+from .migrations import MigrationContext, apply_migrations, cleanup_legacy_files, confirm_legacy_cleanup
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +94,13 @@ class Database:
         apply_migrations(self._conn, self.path, ctx)
         cleanup_legacy_files(self._conn, self.path, ctx.legacy_log_dir, started_at)
 
+    def confirm_legacy_cleanup(self) -> int:
+        """Gibt übernommene Altdateien zum Löschen beim nächsten Start frei."""
+        with self._lock:
+            if self._conn is None:
+                return 0
+            return confirm_legacy_cleanup(self._conn)
+
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.path, timeout=30, check_same_thread=False)
         conn.execute("PRAGMA busy_timeout = 30000")
@@ -128,6 +135,10 @@ class Database:
              round(data.battery_power), round(data.load_power),
              None if data.battery_soc is None else round(data.battery_soc, 1))
         )
+
+    def last_sample_time(self) -> Optional[datetime]:
+        rows = self._read("SELECT MAX(timestamp) FROM solar_data")
+        return datetime.strptime(rows[0][0], TIME_FORMAT) if rows and rows[0][0] else None
 
     def first_sample_time(self) -> Optional[datetime]:
         rows = self._read("SELECT MIN(timestamp) FROM solar_data")

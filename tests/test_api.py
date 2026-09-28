@@ -170,3 +170,26 @@ def test_live_display_renders(app):
     assert "PV-Erzeugung" in text and "5.000 W" in text
     assert "Heizung" in text and "EIN" in text
     assert "Hue verbunden" in text
+
+
+def test_device_names_with_a_slash(app, bridge):
+    device = {"name": "Licht 1/2", "power_consumption": 50, "priority": 5,
+              "switch_on_threshold": 100, "switch_off_threshold": 50}
+    assert app.post("/api/devices", json=device).status_code == 201
+    bridge.add("Licht 1/2")
+    tick(app, pv=0, grid=300, load=300)
+
+    assert app.post("/api/devices/Licht%201%2F2/switch", json={"on": True}).status_code == 200
+    assert app.delete("/api/devices/Licht%201%2F2/manual").status_code == 200
+    assert app.put("/api/devices/Licht%201%2F2", json={**device, "priority": 3}).status_code == 200
+    assert app.delete("/api/devices/Licht%201%2F2").status_code == 200
+
+
+def test_healthy_run_confirms_legacy_cleanup(app, monkeypatch):
+    calls = []
+    monkeypatch.setattr(app.monitor.db, "confirm_legacy_cleanup", lambda: calls.append(1) or 0)
+    start = datetime.now().replace(microsecond=0)
+    for minutes in (0, 5, 11, 12):
+        app.fronius.next = sample(start + timedelta(minutes=minutes), pv=100, load=100)
+        app.monitor.tick(start + timedelta(minutes=minutes))
+    assert calls == [1]
