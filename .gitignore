@@ -1,17 +1,22 @@
-﻿__pycache__/
+__pycache__/
 *.pyc
 .idea/
 *.DS_Store
+.pytest_cache/
 
-# Logs und Daten
+# Laufzeitdaten
+data/
 Datalogs/
-solar_monitor.log
-
-# Builts
-build/
-
-# Lokale Konfigurationsdateien
+*.db
+*.db-wal
+*.db-shm
+*.bak
+*.log
+*.log.*
 devices.json
 settings.json
-
 .python_hue
+
+# Builds
+build/
+dist/
