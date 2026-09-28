@@ -149,6 +149,12 @@
     font-size: var(--font-size-sm);
 }
 
+.csv-link {
+    float: right;
+    color: var(--color-accent-green);
+    font-size: var(--font-size-sm);
+}
+
 .table-view[open] summary {
     margin-bottom: var(--spacing-md);
 }

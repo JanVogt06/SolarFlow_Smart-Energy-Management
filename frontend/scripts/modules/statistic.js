@@ -68,6 +68,8 @@ export class StatisticsController {
 
         this.periodButtons.forEach(b => b.classList.toggle('active', b.dataset.period === period.kind));
         setText('period-label', period.label);
+        document.getElementById('csv-export').href =
+            `/api/stats/export?period=${period.kind}${this.ref ? `&ref=${this.ref}` : ''}`;
         this.prev.dataset.ref = period.previous || '';
         this.next.dataset.ref = period.next || '';
         this.prev.disabled = !period.previous;

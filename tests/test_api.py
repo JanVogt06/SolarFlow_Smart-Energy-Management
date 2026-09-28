@@ -136,3 +136,14 @@ def test_frontend_is_served(app):
     assert response.status_code == 200
     assert "SolarFlow" in response.text
     assert response.headers["cache-control"] == "no-cache"
+
+
+def test_stats_csv_export(app):
+    tick(app, pv=3000, grid=-1000, load=2000)
+    response = app.get("/api/stats/export?period=day")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/csv")
+    assert "attachment" in response.headers["content-disposition"]
+    lines = response.text.strip().split("\n")
+    assert lines[0].startswith("Beginn;PV (kWh)")
+    assert all(line.count(";") == 8 for line in lines)

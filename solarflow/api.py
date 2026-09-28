@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import List, Literal, Optional
 
 import uvicorn
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -111,6 +111,22 @@ def create_app(monitor: Monitor) -> FastAPI:
     @app.get("/api/stats")
     def stats(period: Literal["day", "week", "month", "year", "all"] = "day", ref: Optional[date] = None):
         return build_statistics(monitor.db, config, period, ref)
+
+    @app.get("/api/stats/export")
+    def export_stats(period: Literal["day", "week", "month", "year", "all"] = "day", ref: Optional[date] = None):
+        """Die Balken eines Zeitraums als CSV (Semikolon, deutsches Dezimalkomma)."""
+        data = build_statistics(monitor.db, config, period, ref)
+        columns = ("pv", "load", "self_consumption", "feed_in", "grid", "battery_charge", "battery_discharge")
+        lines = ["Beginn;PV (kWh);Verbrauch (kWh);Selbst gedeckt (kWh);Einspeisung (kWh);Netzbezug (kWh);"
+                 "Akku geladen (kWh);Akku entladen (kWh);Nutzen (EUR)"]
+        for row in data["series"]:
+            if row["pv"] is None:
+                continue
+            values = [row[c] for c in columns] + [row["benefit"]]
+            lines.append(";".join([row["start"]] + [f"{v:.3f}".replace(".", ",") for v in values]))
+        filename = f"solarflow_{period}_{data['period']['start'][:10]}.csv"
+        return Response("\n".join(lines) + "\n", media_type="text/csv; charset=utf-8",
+                        headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
     @app.get("/api/settings")
     def get_settings():
